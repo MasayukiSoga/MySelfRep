@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>戦国シミュレーション</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+
+  <header id="top-bar">
+    <h1>戦国統一絵巻</h1>
+    <div id="status-line">
+      <span id="turn-display">1年目 春</span>
+      <span id="daimyo-display">織田家</span>
+      <span id="gold-display">資金: 0</span>
+    </div>
+  </header>
+
+  <main id="main-area">
+    <section id="map-panel">
+      <canvas id="map-canvas" width="600" height="520"></canvas>
+      <div id="map-legend">国をクリックして選択し、コマンドを実行してください。</div>
+    </section>
+
+    <aside id="side-panel">
+      <div id="province-info">
+        <h2>国情報</h2>
+        <p>国を選択してください</p>
+      </div>
+
+      <div id="command-list">
+        <h2>コマンド</h2>
+        <button id="cmd-develop" disabled>内政（開発）</button>
+        <button id="cmd-recruit" disabled>徴兵</button>
+        <button id="cmd-attack" disabled>出陣</button>
+        <button id="cmd-cancel" disabled>選択解除</button>
+      </div>
+
+      <div id="turn-controls">
+        <button id="end-turn-btn">ターン終了</button>
+      </div>
+
+      <div id="log-panel">
+        <h2>記録</h2>
+        <ul id="log-list"></ul>
+      </div>
+    </aside>
+  </main>
+
+  <div id="battle-overlay" class="hidden">
+    <div id="battle-window">
+      <div id="battle-header">
+        <span id="battle-title">合戦</span>
+        <span id="battle-turn-info">ラウンド 1</span>
+      </div>
+      <canvas id="battle-canvas" width="540" height="420"></canvas>
+      <div id="battle-controls">
+        <div id="battle-status">部隊を選択してください</div>
+        <div id="battle-buttons">
+          <button id="battle-end-turn-btn">ターン終了</button>
+          <button id="battle-retreat-btn">撤退</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="game-over-overlay" class="hidden">
+    <div id="game-over-window">
+      <h2 id="game-over-title">終了</h2>
+      <p id="game-over-text"></p>
+      <button id="game-over-restart-btn">最初から始める</button>
+    </div>
+  </div>
+
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
