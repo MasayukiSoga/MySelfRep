@@ -112,10 +112,31 @@ body {
 }
 
 .general-list li {
+  padding: 3px 0;
+  border-bottom: 1px dotted #262d3a;
+}
+
+.general-line {
   display: flex;
   justify-content: space-between;
   gap: 8px;
-  padding: 2px 0;
+}
+
+.general-trait {
+  color: #9fb3d9;
+  font-size: 11px;
+}
+
+.general-loyalty { font-size: 11px; color: var(--text-dim); }
+.general-loyalty.loyalty-warn { color: var(--gold); }
+.general-loyalty.loyalty-danger { color: var(--danger); font-weight: bold; }
+
+.delegated-tag {
+  color: var(--gold);
+  border: 1px solid var(--gold);
+  border-radius: 3px;
+  padding: 0 4px;
+  font-size: 11px;
 }
 
 .general-list li.pickable {

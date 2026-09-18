@@ -81,6 +81,12 @@ function drawMap(state) {
     ctx.fillStyle = '#d8d8d8';
     ctx.font = '10px sans-serif';
     ctx.fillText(String(prov.troops), prov.x, prov.y + PROVINCE_RADIUS + 12);
+
+    if (prov.delegated) {
+      ctx.fillStyle = '#ffe08a';
+      ctx.font = '9px sans-serif';
+      ctx.fillText('委任', prov.x, prov.y - PROVINCE_RADIUS - 4);
+    }
   }
 }
 
@@ -126,11 +132,18 @@ function renderSidePanel(state) {
     const cap = maxTroops(sel);
     const garrison = generalsIn(state, sel.id);
     const picking = state.pendingTransfer && state.pendingTransfer.fromId === sel.id;
+    const governor = governorOf(state, sel.id);
     const roster = garrison.length
       ? garrison.map(g => `
           <li${picking ? ` class="pickable" data-general="${g.id}"` : ''}>
-            <span class="general-name">${g.lord ? '【当主】' : ''}${g.name}</span>
-            <span class="general-stats">統${g.lead} 武${g.valor} 政${g.politics}</span>
+            <div class="general-line">
+              <span class="general-name">${g.lord ? '【当主】' : ''}${g.name}${governor && g.id === governor.id ? '（城主）' : ''}</span>
+              <span class="general-stats">統${g.lead} 武${g.valor} 政${g.politics}</span>
+            </div>
+            <div class="general-line">
+              <span class="general-trait">${traitsOf(g).name}</span>
+              <span class="general-loyalty ${loyaltyClass(g.loyalty)}">忠誠 ${Math.round(g.loyalty)}</span>
+            </div>
           </li>`).join('')
       : '<li class="general-none">武将がいません</li>';
 
@@ -140,7 +153,7 @@ function renderSidePanel(state) {
       <p><span class="stat-label">領主:</span> ${owner.name}</p>
       <p><span class="stat-label">石高:</span> ${sel.kokudaka}</p>
       <p><span class="stat-label">兵力:</span> ${sel.troops} / ${cap}</p>
-      <p><span class="stat-label">地形:</span> ${TERRAIN[sel.terrain].name}</p>
+      <p><span class="stat-label">地形:</span> ${TERRAIN[sel.terrain].name}${sel.delegated ? ' <span class="delegated-tag">委任中</span>' : ''}</p>
       <ul class="general-list">${roster}</ul>
     `;
   }
@@ -151,12 +164,19 @@ function renderSidePanel(state) {
   const transferring = !!state.pendingTransfer;
   const busy = choosingTarget || transferring;
   const hasFriendlyNeighbor = isMine && sel.neighbors.some(n => getProvince(state, n).ownerId === sel.ownerId);
+  const handsOff = !isMine || alreadyActed || busy || sel.delegated;
 
-  document.getElementById('cmd-develop').disabled = !isMine || alreadyActed || busy;
-  document.getElementById('cmd-recruit').disabled = !isMine || alreadyActed || busy;
-  document.getElementById('cmd-attack').disabled = !isMine || alreadyActed || busy || sel.troops < 100;
-  document.getElementById('cmd-transfer').disabled = !isMine || alreadyActed || busy
+  document.getElementById('cmd-develop').disabled = handsOff;
+  document.getElementById('cmd-recruit').disabled = handsOff;
+  document.getElementById('cmd-attack').disabled = handsOff || sel.troops < 100;
+  document.getElementById('cmd-transfer').disabled = handsOff
     || !hasFriendlyNeighbor || generalsIn(state, sel.id).length === 0;
+  document.getElementById('cmd-reward').disabled = handsOff || generalsIn(state, sel.id).length === 0;
+
+  const delegateBtn = document.getElementById('cmd-delegate');
+  delegateBtn.disabled = !isMine || busy;
+  delegateBtn.textContent = isMine && sel.delegated ? '委任を解く' : '委任する';
+
   document.getElementById('cmd-cancel').disabled = !state.selectedProvinceId && !busy;
 
   const legend = document.getElementById('map-legend');
@@ -169,6 +189,12 @@ function renderSidePanel(state) {
   } else {
     legend.textContent = '国をクリックして選択し、コマンドを実行してください。';
   }
+}
+
+function loyaltyClass(loyalty) {
+  if (loyalty < 25) return 'loyalty-danger';
+  if (loyalty < 50) return 'loyalty-warn';
+  return '';
 }
 
 function renderLog(state) {

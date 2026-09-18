@@ -1,56 +1,100 @@
-// Decide and execute one action for an AI-controlled province.
-// Returns { type: 'attack', fromId, toId, sentTroops } when the province
-// wants to invade a neighbor (caller handles battle creation), otherwise null.
-function aiDecideAndAct(state, provinceId) {
+// One province, one decision, made by whoever governs it. Personality sets the
+// appetite for war, ability sets how well the province is run, and loyalty
+// decides whether the governor bothers serving his lord's interests at all.
+// Returns an { type: 'attack', ... } order when he marches, otherwise null.
+function decideProvinceAction(state, provinceId) {
   const prov = getProvince(state, provinceId);
   const daimyo = getDaimyo(state, prov.ownerId);
+  const governor = governorOf(state, provinceId);
   const cap = maxTroops(prov);
 
-  if (prov.troops < cap * 0.3 && daimyo.gold >= 30) {
+  if (!governor) return actWithoutGovernor(state, provinceId);
+
+  const traits = traitsOf(governor);
+  const skill = (governor.lead + governor.valor) / 200;
+  const sulking = governor.loyalty < 40;
+
+  // a discontented governor does the bare minimum for his lord
+  if (sulking && Math.random() < (40 - governor.loyalty) / 60) {
+    addLog(state, `${prov.name}の${governor.name}は動かず、様子を見ている。`);
+    return null;
+  }
+
+  if (prov.troops < cap * traits.garrisonFloor * 0.6 && daimyo.gold >= 30) {
     recruitTroops(state, provinceId);
     return null;
   }
 
-  const weakEnemyNeighbor = prov.neighbors
-    .map(id => getProvince(state, id))
-    .filter(n => n.ownerId !== prov.ownerId)
-    .sort((a, b) => a.troops - b.troops)[0];
+  const spareTroops = prov.troops - cap * traits.garrisonFloor * 0.5;
+  const confidence = traits.oddsNeeded * (0.75 + skill * 0.5);
+  const target = pickTarget(state, prov, governor, prov.troops * confidence, skill);
 
-  const hasSizeableForce = prov.troops > 250;
-  const feelingBold = Math.random() < 0.4;
-
-  if (weakEnemyNeighbor && hasSizeableForce && feelingBold && weakEnemyNeighbor.troops < prov.troops * 0.65) {
-    const sentTroops = Math.round(prov.troops * 0.7);
+  if (target && spareTroops > 200 && Math.random() < traits.aggression) {
+    const sentTroops = Math.round(prov.troops * (0.5 + traits.aggression * 0.4));
     prov.troops -= sentTroops;
     const marching = marchingGeneralsFrom(state, prov.id);
-    const led = marching.length ? `${marching[0].name}率いる軍が` : '';
-    addLog(state, `${daimyo.name}の${led}${prov.name}から${weakEnemyNeighbor.name}へ出陣した。`);
-    return { type: 'attack', fromId: prov.id, toId: weakEnemyNeighbor.id, sentTroops, marching };
+    addLog(state, `${daimyo.name}の${governor.name}が${prov.name}から${target.name}へ出陣した。`);
+    return { type: 'attack', fromId: prov.id, toId: target.id, sentTroops, marching };
   }
 
-  // a province left without a governor gets one from a neighbor that can spare it
-  if (generalsIn(state, provinceId).length === 0) {
-    const spare = prov.neighbors
-      .filter(n => getProvince(state, n).ownerId === prov.ownerId)
-      .flatMap(n => (generalsIn(state, n).length > 1 ? generalsIn(state, n).slice(1) : []))
-      .sort((a, b) => b.politics - a.politics)[0];
-    if (spare) {
-      transferGeneral(state, spare.id, provinceId);
-      return null;
-    }
-  }
+  if (restaffNeighbor(state, prov)) return null;
 
-  if (daimyo.gold >= 50) {
+  const wantsDevelopment = Math.random() < traits.developBias * (0.6 + governor.politics / 200);
+  if (wantsDevelopment && daimyo.gold >= 50 && prov.kokudaka < 300) {
     developProvince(state, provinceId);
-  } else {
+  } else if (prov.troops < cap * 0.95) {
     recruitTroops(state, provinceId);
+  } else if (daimyo.gold >= 50) {
+    developProvince(state, provinceId);
   }
   return null;
 }
 
+// Only neighbors he believes he can beat are worth considering — and what he
+// believes depends on how good he is. A dull commander misreads enemy strength
+// badly enough to march into a fight he was never going to win, while an able
+// one sees the field almost as it is. Among the targets that pass, a 猛将 takes
+// the easiest fight and a 智将 the richest prize.
+function pickTarget(state, prov, governor, beatableUpTo, clarity) {
+  const scouted = prov.neighbors
+    .map(id => getProvince(state, id))
+    .filter(n => n.ownerId !== prov.ownerId)
+    .map(n => ({ prov: n, seen: n.troops * (1 + (1 - clarity) * (Math.random() * 2 - 1)) }))
+    .filter(o => o.seen < beatableUpTo);
+  if (!scouted.length) return null;
+
+  if (governor.personality === 'cunning' || governor.personality === 'ambitious') {
+    return scouted.sort((a, b) => (b.prov.kokudaka / (b.seen + 300)) - (a.prov.kokudaka / (a.seen + 300)))[0].prov;
+  }
+  return scouted.sort((a, b) => a.seen - b.seen)[0].prov;
+}
+
+// A province with nobody in charge is run by clerks until a neighbor spares a man.
+function actWithoutGovernor(state, provinceId) {
+  const prov = getProvince(state, provinceId);
+  if (restaffNeighbor(state, prov)) return null;
+  if (getDaimyo(state, prov.ownerId).gold >= 50) developProvince(state, provinceId);
+  else recruitTroops(state, provinceId);
+  return null;
+}
+
+function restaffNeighbor(state, prov) {
+  const emptyNeighbor = prov.neighbors
+    .map(id => getProvince(state, id))
+    .find(n => n.ownerId === prov.ownerId && generalsIn(state, n.id).length === 0);
+  if (!emptyNeighbor || generalsIn(state, prov.id).length < 2) return false;
+  const spare = generalsIn(state, prov.id).slice(1).sort((a, b) => b.politics - a.politics)[0];
+  return transferGeneral(state, spare.id, emptyNeighbor.id);
+}
+
 // An army is led by its ablest commanders, one per squad on the battle map.
+// Whenever the province can spare a man, the best administrator among them
+// stays behind as castellan rather than leaving the province ungoverned.
 function marchingGeneralsFrom(state, provinceId) {
-  return generalsIn(state, provinceId).slice(0, MAX_SQUADS);
+  const garrison = generalsIn(state, provinceId);
+  if (garrison.length < 3) return garrison.slice(0, MAX_SQUADS);
+  const castellan = garrison.slice(1).sort((a, b) => b.politics - a.politics)[0];
+  return garrison.filter(g => g.id !== castellan.id).slice(0, MAX_SQUADS);
 }
 
 // Quick, non-interactive resolution for battles where neither side is the
@@ -82,6 +126,8 @@ function simulateAutoBattle(state, attackerProvinceId, defenderProvinceId, sentT
   }
 
   if (attackerWon) {
+    shiftHouseMorale(state, defenderDaimyo.id, -8);
+    shiftHouseMorale(state, attackerDaimyo.id, 4);
     settleDefeatedGenerals(state, defending, attackerDaimyo.id);
     defenderProv.ownerId = attackerDaimyo.id;
     defenderProv.troops = Math.max(10, atk);

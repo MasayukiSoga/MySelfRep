@@ -101,6 +101,25 @@ function setupCommandButtons() {
     renderAll(state);
   });
 
+  document.getElementById('cmd-reward').addEventListener('click', () => {
+    const id = state.selectedProvinceId;
+    if (!id || state.actedProvinces.has(id)) return;
+    if (rewardGenerals(state, id)) state.actedProvinces.add(id);
+    renderAll(state);
+  });
+
+  document.getElementById('cmd-delegate').addEventListener('click', () => {
+    const id = state.selectedProvinceId;
+    if (!id) return;
+    const prov = getProvince(state, id);
+    prov.delegated = !prov.delegated;
+    const governor = governorOf(state, id);
+    addLog(state, prov.delegated
+      ? `${prov.name}の統治を${governor ? governor.name : '代官'}に委任した。`
+      : `${prov.name}の委任を解いた。`);
+    renderAll(state);
+  });
+
   document.getElementById('cmd-cancel').addEventListener('click', () => {
     state.pendingAttackFrom = null;
     state.pendingTransfer = null;
@@ -131,6 +150,7 @@ function endTurn() {
 
   runAIPhase(() => {
     collectIncome(state);
+    advanceLoyalty(state);
     updateDaimyoAliveStatus(state);
     state.turn += 1;
     state.actedProvinces.clear();
@@ -145,24 +165,30 @@ function endTurn() {
   });
 }
 
+// Every province the player does not personally command acts here: rival houses,
+// and the player's own provinces that have been handed to their governor.
 function runAIPhase(onDone) {
-  const aiProvinceIds = Object.values(state.provinces)
-    .filter(p => p.ownerId !== state.playerDaimyoId)
-    .map(p => p.id);
+  const isPlayers = p => p.ownerId === state.playerDaimyoId;
+  const autonomous = [
+    ...Object.values(state.provinces).filter(p => isPlayers(p) && p.delegated),
+    ...Object.values(state.provinces).filter(p => !isPlayers(p)),
+  ].map(p => p.id);
 
   let idx = 0;
   function step() {
     if (state.gameOver) return;
-    if (idx >= aiProvinceIds.length) { onDone(); return; }
-    const provinceId = aiProvinceIds[idx++];
+    if (idx >= autonomous.length) { onDone(); return; }
+    const provinceId = autonomous[idx++];
     const prov = state.provinces[provinceId];
-    if (!prov || prov.ownerId === state.playerDaimyoId) { step(); return; }
+    if (!prov || (isPlayers(prov) && !prov.delegated)) { step(); return; }
 
-    const action = aiDecideAndAct(state, provinceId);
+    const action = decideProvinceAction(state, provinceId);
     if (action) {
+      // the player only takes the field for a province they command themselves
       const defenderProv = getProvince(state, action.toId);
-      const defenderDaimyo = getDaimyo(state, defenderProv.ownerId);
-      if (defenderDaimyo.id === state.playerDaimyoId) {
+      const playerDefendsInPerson = defenderProv.ownerId === state.playerDaimyoId
+        && !defenderProv.delegated && !getProvince(state, action.fromId).delegated;
+      if (playerDefendsInPerson) {
         startBattle(action.fromId, action.toId, action.sentTroops, () => step(), action.marching);
         return;
       }

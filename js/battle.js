@@ -335,6 +335,12 @@ function aiTakeSideTurn(battle, sideName) {
       .sort((a, b) => (terrainAt(battle, b.col, b.row).defense - terrainAt(battle, a.col, a.row).defense)
         || (a.troops - b.troops))[0];
     if (adjacentTarget) {
+      // a careful commander refuses a hopeless exchange and holds his ground
+      const charge = squad.general ? traitsOf(squad.general).charge : 0.7;
+      if (adjacentTarget.troops > squad.troops * (1 + charge) && charge < 0.5) {
+        squad.acted = true;
+        continue;
+      }
       const res = performAttack(battle, sideName, squad.id, adjacentTarget.id);
       if (res) events.push({ type: 'attack', squadId: squad.id, targetId: adjacentTarget.id, res });
       continue;
@@ -349,8 +355,11 @@ function aiTakeSideTurn(battle, sideName) {
 
     const options = reachableCells(battle, squad);
     if (options.length > 0) {
-      // close the distance, but take the better cover among equally close tiles
-      const scoreOf = c => manhattan(c, nearest) + (terrainAt(battle, c.col, c.row).defense - 1) * 1.5;
+      // how much ground a commander trades for cover is a matter of character:
+      // a 猛将 charges straight in, a 智将 picks his ground first
+      const charge = squad.general ? traitsOf(squad.general).charge : 0.7;
+      const scoreOf = c => manhattan(c, nearest) * (0.5 + charge)
+        + (terrainAt(battle, c.col, c.row).defense - 1) * (3 - charge * 2);
       let best = options[0];
       let bestScore = scoreOf(best);
       for (const c of options) {
@@ -417,6 +426,8 @@ function resolveBattleOutcome(state, battle) {
   settleGenerals(state, battle);
 
   if (battle.result === 'attacker') {
+    shiftHouseMorale(state, defenderDaimyo.id, -8);
+    shiftHouseMorale(state, attackerDaimyo.id, 4);
     defenderProv.ownerId = attackerDaimyo.id;
     defenderProv.troops = Math.max(10, survivingAttackerTroops);
     addLog(state, `【合戦】${attackerDaimyo.name}が${defenderProv.name}を攻略した！`);
