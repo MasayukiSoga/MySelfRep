@@ -103,6 +103,39 @@ body {
 #province-info p { margin: 4px 0; font-size: 13px; }
 #province-info .stat-label { color: var(--text-dim); }
 
+.general-list {
+  list-style: none;
+  margin: 8px 0 0 0;
+  padding: 6px 0 0 0;
+  border-top: 1px dotted var(--panel-border);
+  font-size: 12px;
+}
+
+.general-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.general-list li.pickable {
+  cursor: pointer;
+  border: 1px solid var(--panel-border);
+  border-radius: 3px;
+  padding: 3px 6px;
+  margin: 3px 0;
+  background: #222a36;
+}
+
+.general-list li.pickable:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.general-name { color: var(--text); }
+.general-stats { color: var(--text-dim); font-size: 11px; }
+.general-none { color: var(--text-dim); }
+
 button {
   display: block;
   width: 100%;

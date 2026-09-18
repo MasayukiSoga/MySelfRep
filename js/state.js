@@ -35,18 +35,74 @@ function createInitialState() {
     prov.troops = Math.round(maxTroops(prov) * 0.5);
   }
 
+  const generals = {};
+  for (const def of GENERALS) {
+    generals[def.id] = { ...def, provinceId: def.province, alive: true };
+  }
+
   return {
     turn: 1,
     provinces,
     daimyos,
+    generals,
     playerDaimyoId: 'owari',
     actedProvinces: new Set(),
     selectedProvinceId: null,
     pendingAttackFrom: null, // when choosing a target province to attack
+    pendingTransfer: null,   // { fromId, generalId } while re-stationing a general
     log: [],
     battle: null, // active battle state, or null
     gameOver: null, // { victory: bool, text } or null
   };
+}
+
+function generalsIn(state, provinceId) {
+  return Object.values(state.generals)
+    .filter(g => g.alive && g.provinceId === provinceId)
+    .sort((a, b) => b.lead - a.lead);
+}
+
+// the ablest administrator present runs 内政 and 徴兵; an ungoverned province
+// manages on its own at a penalty
+function bestAdministrator(state, provinceId) {
+  return generalsIn(state, provinceId).sort((a, b) => b.politics - a.politics)[0] || null;
+}
+
+function administrationFactor(general) {
+  return general ? 0.7 + general.politics / 125 : 0.6;
+}
+
+// Generals march out with their army, so provinces need a way to be re-staffed.
+function transferGeneral(state, generalId, toProvinceId) {
+  const general = state.generals[generalId];
+  const from = getProvince(state, general.provinceId);
+  const to = getProvince(state, toProvinceId);
+  if (!general.alive || from.ownerId !== to.ownerId || !from.neighbors.includes(toProvinceId)) return false;
+  general.provinceId = toProvinceId;
+  addLog(state, `${general.name}が${from.name}から${to.name}へ移った。`);
+  return true;
+}
+
+function killGeneral(state, general, reason) {
+  general.alive = false;
+  general.provinceId = null;
+  addLog(state, `${general.name}が${reason}。`);
+}
+
+// Losers of a battle may fall, change sides, or leave the game entirely.
+function settleDefeatedGenerals(state, defeated, newOwnerId) {
+  for (const general of defeated) {
+    const roll = Math.random();
+    if (roll < 0.3) {
+      killGeneral(state, general, '討死した');
+    } else if (roll < 0.65 && newOwnerId) {
+      addLog(state, `${general.name}が${getDaimyo(state, newOwnerId).name}に降った。`);
+    } else {
+      general.alive = false;
+      general.provinceId = null;
+      addLog(state, `${general.name}が退去した。`);
+    }
+  }
 }
 
 function maxTroops(province) {
@@ -87,9 +143,11 @@ function developProvince(state, provinceId) {
     return false;
   }
   daimyo.gold -= cost;
-  const gain = 5 + Math.floor(Math.random() * 8);
+  const administrator = bestAdministrator(state, provinceId);
+  const gain = Math.max(1, Math.round((5 + Math.random() * 8) * administrationFactor(administrator)));
   prov.kokudaka = Math.min(KOKUDAKA_CAP, prov.kokudaka + gain);
-  addLog(state, `${prov.name}で内政を実施。石高+${gain}（${prov.kokudaka}）`);
+  const by = administrator ? `${administrator.name}が` : '代官が';
+  addLog(state, `${prov.name}で${by}内政を実施。石高+${gain}（${prov.kokudaka}）`);
   return true;
 }
 
@@ -102,15 +160,18 @@ function recruitTroops(state, provinceId) {
     addLog(state, `${prov.name}: 兵力は既に上限です。`);
     return false;
   }
+  const administrator = bestAdministrator(state, provinceId);
   const affordable = Math.floor(daimyo.gold / 3);
-  const batch = Math.min(room, affordable, Math.max(20, Math.round(cap * 0.25)));
+  const ceiling = Math.max(20, Math.round(cap * 0.25 * administrationFactor(administrator)));
+  const batch = Math.min(room, affordable, ceiling);
   if (batch <= 0) {
     addLog(state, `${prov.name}: 資金不足で徴兵できません。`);
     return false;
   }
   daimyo.gold -= batch * 3;
   prov.troops += batch;
-  addLog(state, `${prov.name}で徴兵。兵+${batch}（${prov.troops}/${cap}）`);
+  const by = administrator ? `${administrator.name}が` : '代官が';
+  addLog(state, `${prov.name}で${by}徴兵。兵+${batch}（${prov.troops}/${cap}）`);
   return true;
 }
 

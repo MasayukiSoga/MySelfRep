@@ -46,6 +46,7 @@ function drawMap(state) {
   }
 
   const attackTargets = getValidAttackTargets(state);
+  const transferTargets = getValidTransferTargets(state);
 
   for (const prov of Object.values(state.provinces)) {
     const owner = getDaimyo(state, prov.ownerId);
@@ -61,6 +62,10 @@ function drawMap(state) {
     } else if (attackTargets.has(prov.id)) {
       ctx.lineWidth = 3;
       ctx.strokeStyle = '#e05050';
+      ctx.stroke();
+    } else if (transferTargets.has(prov.id)) {
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#7ad17a';
       ctx.stroke();
     } else {
       ctx.lineWidth = 1.5;
@@ -91,6 +96,18 @@ function getValidAttackTargets(state) {
   return set;
 }
 
+function getValidTransferTargets(state) {
+  const set = new Set();
+  const pending = state.pendingTransfer;
+  if (pending && pending.generalId) {
+    const prov = getProvince(state, pending.fromId);
+    for (const nId of prov.neighbors) {
+      if (getProvince(state, nId).ownerId === prov.ownerId) set.add(nId);
+    }
+  }
+  return set;
+}
+
 function renderTopBar(state) {
   const player = getDaimyo(state, state.playerDaimyoId);
   document.getElementById('turn-display').textContent = `第${state.turn}ターン`;
@@ -107,27 +124,48 @@ function renderSidePanel(state) {
   } else {
     const owner = getDaimyo(state, sel.ownerId);
     const cap = maxTroops(sel);
+    const garrison = generalsIn(state, sel.id);
+    const picking = state.pendingTransfer && state.pendingTransfer.fromId === sel.id;
+    const roster = garrison.length
+      ? garrison.map(g => `
+          <li${picking ? ` class="pickable" data-general="${g.id}"` : ''}>
+            <span class="general-name">${g.lord ? '【当主】' : ''}${g.name}</span>
+            <span class="general-stats">統${g.lead} 武${g.valor} 政${g.politics}</span>
+          </li>`).join('')
+      : '<li class="general-none">武将がいません</li>';
+
     infoDiv.innerHTML = `
       <h2>国情報</h2>
       <p><span class="stat-label">国名:</span> ${sel.name}</p>
       <p><span class="stat-label">領主:</span> ${owner.name}</p>
       <p><span class="stat-label">石高:</span> ${sel.kokudaka}</p>
       <p><span class="stat-label">兵力:</span> ${sel.troops} / ${cap}</p>
+      <p><span class="stat-label">地形:</span> ${TERRAIN[sel.terrain].name}</p>
+      <ul class="general-list">${roster}</ul>
     `;
   }
 
   const isMine = sel && sel.ownerId === state.playerDaimyoId;
   const alreadyActed = sel && state.actedProvinces.has(sel.id);
   const choosingTarget = !!state.pendingAttackFrom;
+  const transferring = !!state.pendingTransfer;
+  const busy = choosingTarget || transferring;
+  const hasFriendlyNeighbor = isMine && sel.neighbors.some(n => getProvince(state, n).ownerId === sel.ownerId);
 
-  document.getElementById('cmd-develop').disabled = !isMine || alreadyActed || choosingTarget;
-  document.getElementById('cmd-recruit').disabled = !isMine || alreadyActed || choosingTarget;
-  document.getElementById('cmd-attack').disabled = !isMine || alreadyActed || choosingTarget || sel.troops < 100;
-  document.getElementById('cmd-cancel').disabled = !state.selectedProvinceId && !choosingTarget;
+  document.getElementById('cmd-develop').disabled = !isMine || alreadyActed || busy;
+  document.getElementById('cmd-recruit').disabled = !isMine || alreadyActed || busy;
+  document.getElementById('cmd-attack').disabled = !isMine || alreadyActed || busy || sel.troops < 100;
+  document.getElementById('cmd-transfer').disabled = !isMine || alreadyActed || busy
+    || !hasFriendlyNeighbor || generalsIn(state, sel.id).length === 0;
+  document.getElementById('cmd-cancel').disabled = !state.selectedProvinceId && !busy;
 
   const legend = document.getElementById('map-legend');
   if (choosingTarget) {
     legend.textContent = '出陣先の敵国（赤枠）をクリックしてください。';
+  } else if (transferring && !state.pendingTransfer.generalId) {
+    legend.textContent = '移動させる武将を右の一覧から選んでください。';
+  } else if (transferring) {
+    legend.textContent = '武将を送る自国（緑枠）をクリックしてください。';
   } else {
     legend.textContent = '国をクリックして選択し、コマンドを実行してください。';
   }
@@ -270,13 +308,25 @@ function highlightCells(ctx, cells) {
   }
 }
 
+function drawSquadName(ctx, squad, x, y) {
+  if (!squad.general) return;
+  const label = squad.general.name;
+  ctx.font = '9px sans-serif';
+  ctx.textAlign = 'center';
+  const width = ctx.measureText(label).width + 6;
+  ctx.fillStyle = 'rgba(12, 16, 12, 0.75)';
+  ctx.fillRect(x - width / 2, y - 9, width, 12);
+  ctx.fillStyle = '#ffe9b0';
+  ctx.fillText(label, x, y);
+}
+
 function drawSquads(ctx, squads, color, selectedId) {
   for (const sq of squads) {
     if (sq.troops <= 0) continue;
     const cx = sq.col * BATTLE_CELL + BATTLE_CELL / 2;
-    const cy = sq.row * BATTLE_CELL + BATTLE_CELL / 2;
+    const cy = sq.row * BATTLE_CELL + BATTLE_CELL / 2 + 5;
     ctx.beginPath();
-    ctx.arc(cx, cy, 22, 0, Math.PI * 2);
+    ctx.arc(cx, cy, 19, 0, Math.PI * 2);
     ctx.fillStyle = color;
     ctx.fill();
     ctx.lineWidth = sq.id === selectedId ? 4 : 1.5;
@@ -287,6 +337,7 @@ function drawSquads(ctx, squads, color, selectedId) {
     ctx.font = 'bold 11px sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText(String(sq.troops), cx, cy + 4);
+    drawSquadName(ctx, sq, cx, sq.row * BATTLE_CELL + 12);
   }
 }
 

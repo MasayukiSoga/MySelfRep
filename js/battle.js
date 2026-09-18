@@ -1,6 +1,7 @@
 const COLS = 9;
 const ROWS = 7;
 const MOVE_POINTS = 3;
+const MAX_SQUADS = 4;
 // rugged terrain slows fights down (forest/hill cut damage), so allow room
 // for those battles to reach a decision instead of timing out as a draw
 const MAX_ROUNDS = 16;
@@ -98,7 +99,7 @@ function terrainEffectText(terrain) {
   return parts.join('・');
 }
 
-function splitIntoSquads(troops, maxSquads = 4) {
+function splitIntoSquads(troops, maxSquads = MAX_SQUADS) {
   const per = Math.ceil(troops / maxSquads);
   const squads = [];
   let remaining = troops;
@@ -110,7 +111,7 @@ function splitIntoSquads(troops, maxSquads = 4) {
   return squads;
 }
 
-function makeSquads(troopAmount, col, rowSpread) {
+function makeSquads(troopAmount, col, rowSpread, generals = []) {
   const amounts = splitIntoSquads(troopAmount);
   return amounts.map((troops, i) => ({
     id: nextSquadId++,
@@ -118,10 +119,20 @@ function makeSquads(troopAmount, col, rowSpread) {
     col,
     row: rowSpread[i % rowSpread.length],
     acted: false,
+    general: generals[i] || null,
   }));
 }
 
-function createBattle(state, attackerProvinceId, defenderProvinceId, sentTroops) {
+// 武勇 drives the damage a squad deals, 統率 the damage it absorbs.
+function valorFactor(squad) {
+  return squad.general ? 1 + squad.general.valor / 250 : 1;
+}
+
+function leadFactor(squad) {
+  return squad.general ? 1 - squad.general.lead / 400 : 1;
+}
+
+function createBattle(state, attackerProvinceId, defenderProvinceId, sentTroops, marchingGenerals = []) {
   const attackerProv = getProvince(state, attackerProvinceId);
   const defenderProv = getProvince(state, defenderProvinceId);
   const attackerDaimyo = getDaimyo(state, attackerProv.ownerId);
@@ -129,6 +140,7 @@ function createBattle(state, attackerProvinceId, defenderProvinceId, sentTroops)
 
   const attackerRows = [0, 2, 4, 6];
   const defenderRows = [0, 2, 4, 6];
+  const defendingGenerals = generalsIn(state, defenderProvinceId);
 
   const battle = {
     attackerProvinceId,
@@ -136,13 +148,15 @@ function createBattle(state, attackerProvinceId, defenderProvinceId, sentTroops)
     terrain: generateTerrain(defenderProv.terrain),
     attackerDaimyoId: attackerDaimyo.id,
     defenderDaimyoId: defenderDaimyo.id,
+    marchingGenerals,
+    defendingGenerals,
     attacker: {
       controller: attackerDaimyo.isPlayer ? 'player' : 'ai',
-      squads: makeSquads(sentTroops, 1, attackerRows),
+      squads: makeSquads(sentTroops, 1, attackerRows, marchingGenerals),
     },
     defender: {
       controller: defenderDaimyo.isPlayer ? 'player' : 'ai',
-      squads: makeSquads(defenderProv.troops, COLS - 2, defenderRows),
+      squads: makeSquads(defenderProv.troops, COLS - 2, defenderRows, defendingGenerals),
     },
     turnSide: 'attacker',
     round: 1,
@@ -265,11 +279,13 @@ function performAttack(battle, sideName, squadId, targetSquadId) {
   const squadTerrain = terrainAt(battle, squad.col, squad.row);
   const targetTerrain = terrainAt(battle, target.col, target.row);
 
-  const dmgToTarget = Math.round(computeDamage(squad.troops) * squadTerrain.attack * targetTerrain.defense);
+  const dmgToTarget = Math.round(computeDamage(squad.troops)
+    * valorFactor(squad) * leadFactor(target) * squadTerrain.attack * targetTerrain.defense);
   target.troops = Math.max(0, target.troops - dmgToTarget);
   let counter = 0;
   if (target.troops > 0) {
-    counter = Math.round(computeDamage(target.troops) * 0.5 * targetTerrain.attack * squadTerrain.defense);
+    counter = Math.round(computeDamage(target.troops) * 0.5
+      * valorFactor(target) * leadFactor(squad) * targetTerrain.attack * squadTerrain.defense);
     squad.troops = Math.max(0, squad.troops - counter);
   }
   squad.acted = true;
@@ -362,6 +378,33 @@ function switchTurn(battle) {
   resetActedFlags(sideOf(battle, battle.turnSide));
 }
 
+// A general whose squad was wiped out may fall; the rest follow the army,
+// and a beaten garrison is killed, recruited, or driven off.
+function settleGenerals(state, battle) {
+  const attackerWon = battle.result === 'attacker';
+  const stillLeading = new Set(aliveSquads(battle.attacker).map(sq => sq.general && sq.general.id));
+
+  for (const general of battle.marchingGenerals) {
+    if (!general.alive) continue;
+    if (!stillLeading.has(general.id) && Math.random() < 0.3) {
+      killGeneral(state, general, '討死した');
+      continue;
+    }
+    general.provinceId = attackerWon ? battle.defenderProvinceId : battle.attackerProvinceId;
+  }
+
+  const survivingDefenders = new Set(aliveSquads(battle.defender).map(sq => sq.general && sq.general.id));
+  const beatenDefenders = battle.defendingGenerals.filter(g => g.alive && !survivingDefenders.has(g.id));
+
+  if (attackerWon) {
+    settleDefeatedGenerals(state, beatenDefenders, battle.attackerDaimyoId);
+  } else {
+    for (const general of beatenDefenders) {
+      if (Math.random() < 0.3) killGeneral(state, general, '討死した');
+    }
+  }
+}
+
 function resolveBattleOutcome(state, battle) {
   const attackerProv = getProvince(state, battle.attackerProvinceId);
   const defenderProv = getProvince(state, battle.defenderProvinceId);
@@ -370,6 +413,8 @@ function resolveBattleOutcome(state, battle) {
 
   const survivingAttackerTroops = aliveSquads(battle.attacker).reduce((s, sq) => s + sq.troops, 0);
   const survivingDefenderTroops = aliveSquads(battle.defender).reduce((s, sq) => s + sq.troops, 0);
+
+  settleGenerals(state, battle);
 
   if (battle.result === 'attacker') {
     defenderProv.ownerId = attackerDaimyo.id;

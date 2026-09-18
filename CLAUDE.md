@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A browser-based, turn-based strategy game in vanilla JavaScript (no libraries/frameworks, no build step). Style is modeled on Sangokushi / Nobunaga's Ambition: a strategic map with command-based turns (内政/徴兵/出陣), plus a separate tactical grid map for battles.
+A browser-based, turn-based strategy game in vanilla JavaScript (no libraries/frameworks, no build step). Style is modeled on Sangokushi / Nobunaga's Ambition: a strategic map with command-based turns (内政/徴兵/出陣/武将移動), named generals with stats, plus a separate tactical grid map for battles.
 
 ## Running it
 
@@ -17,7 +17,7 @@ There is no build/lint/test tooling; verify changes by exercising the UI in a br
 ## Architecture
 
 - `index.html` / `css/style.css` — page shell and styling (dark strategy-game theme). Three overlays live in the DOM: the main map+panel view, the battle overlay, and the game-over overlay.
-- `js/data.js` — static data: the 15 provinces (id, display name, canvas x/y, base kokudaka, neighbor ids) and the daimyo house metadata (name/color) that starts in each province. `owari` is the player's house.
+- `js/data.js` — static data: the 15 provinces (id, display name, canvas x/y, base kokudaka, terrain profile, neighbor ids), the daimyo house metadata (name/color) that starts in each province, and the `GENERALS` roster. `owari` is the player's house.
 - `js/state.js` — mutable game state factory (`createInitialState`) and pure-ish mutators: `developProvince`, `recruitTroops`, `collectIncome`, `checkGameOver`, `updateDaimyoAliveStatus`. `maxTroops`/`incomeOf` are the core balance formulas, derived from a province's `kokudaka`.
 - `js/ai.js` — per-province AI heuristic (`aiDecideAndAct`: recruit if under-garrisoned, otherwise sometimes invade a visibly weaker neighbor, otherwise develop) and `simulateAutoBattle`, a fast non-interactive resolver used when neither side of a fight is the player.
 - `js/battle.js` — the tactical battle engine: splits a province's army into squads on a grid (`COLS`×`ROWS`), terrain (`TERRAIN`/`TERRAIN_PROFILES`), movement/attack rules, a simple chase-and-attack AI (`aiTakeSideTurn`), turn/round bookkeeping, and `resolveBattleOutcome` which writes the result back into `state` (ownership transfer, surviving troop counts).
@@ -27,6 +27,8 @@ There is no build/lint/test tooling; verify changes by exercising the UI in a br
 ## Key design points worth knowing before changing behavior
 
 - One command per province per turn, tracked via `state.actedProvinces` (cleared on `endTurn`).
+- A general has no house field: they serve whoever owns the province they are stationed in, so conquest and defection are just a `provinceId`/ownership change. 政治 scales 内政 and 徴兵 (`administrationFactor`), 武勇/統率 scale damage dealt/absorbed per squad (`valorFactor`/`leadFactor`), and `simulateAutoBattle` approximates the same with `commanderEdge` so AI-vs-AI fights respect generals too.
+- Armies take their best commanders with them (`marchingGeneralsFrom`, capped at `MAX_SQUADS`), which means a province can be left ungoverned after it attacks. That is why 武将移動 exists for the player and why `aiDecideAndAct` re-staffs empty provinces from a neighbor — without both, conquered land would stay leaderless forever and develop at the no-governor penalty.
 - Battles involving the player always use the tactical grid map in `battle.js`; AI-vs-AI battles are resolved instantly via `ai.js#simulateAutoBattle` to keep end-turn processing fast.
 - Battle terrain is generated per battle from the *defending* province's `terrain` profile, so each province has a characteristic battlefield. Generation guarantees both deployment zones (outer two columns) are passable and that the two sides can reach each other (`sidesAreConnected`) — mountains are impassable, so an unvalidated map could otherwise be unwinnable. Movement is a cost-based search (`reachableCells`) where other squads block the path.
 - Terrain constants interact with `MAX_ROUNDS`: forest/hill cut damage, so rugged provinces take noticeably longer to decide. Evenly matched mountain battles intentionally favor the defender by timeout; lopsided ones still resolve (verified ~59/60 attacker wins at a 2000 vs 1200 ratio). Re-check both if you tune terrain modifiers.

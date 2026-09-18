@@ -27,8 +27,10 @@ function launchPlayerAttack(fromId, toId) {
   state.actedProvinces.add(fromId);
   state.pendingAttackFrom = null;
   state.selectedProvinceId = null;
-  addLog(state, `${prov.name}から${getProvince(state, toId).name}へ出陣した。`);
-  startBattle(fromId, toId, sentTroops, () => renderAll(state));
+  const marching = marchingGeneralsFrom(state, fromId);
+  const led = marching.length ? `${marching[0].name}率いる軍が` : '';
+  addLog(state, `${led}${prov.name}から${getProvince(state, toId).name}へ出陣した。`);
+  startBattle(fromId, toId, sentTroops, () => renderAll(state), marching);
 }
 
 function setupMapEvents() {
@@ -47,6 +49,19 @@ function setupMapEvents() {
         state.pendingAttackFrom = null;
         renderAll(state);
       }
+      return;
+    }
+
+    if (state.pendingTransfer) {
+      const pending = state.pendingTransfer;
+      if (getValidTransferTargets(state).has(clickedId)
+          && transferGeneral(state, pending.generalId, clickedId)) {
+        state.actedProvinces.add(pending.fromId);
+        state.pendingTransfer = null;
+      } else if (clickedId === pending.fromId && !pending.generalId) {
+        state.pendingTransfer = null;
+      }
+      renderAll(state);
       return;
     }
 
@@ -79,9 +94,25 @@ function setupCommandButtons() {
     renderAll(state);
   });
 
+  document.getElementById('cmd-transfer').addEventListener('click', () => {
+    const id = state.selectedProvinceId;
+    if (!id || state.actedProvinces.has(id)) return;
+    state.pendingTransfer = { fromId: id, generalId: null };
+    renderAll(state);
+  });
+
   document.getElementById('cmd-cancel').addEventListener('click', () => {
     state.pendingAttackFrom = null;
+    state.pendingTransfer = null;
     state.selectedProvinceId = null;
+    renderAll(state);
+  });
+
+  // picking which general to send, from the roster in the province panel
+  document.getElementById('province-info').addEventListener('click', (evt) => {
+    const row = evt.target.closest('li.pickable');
+    if (!row || !state.pendingTransfer) return;
+    state.pendingTransfer.generalId = row.dataset.general;
     renderAll(state);
   });
 
@@ -96,6 +127,7 @@ function endTurn() {
   endBtn.disabled = true;
   state.selectedProvinceId = null;
   state.pendingAttackFrom = null;
+  state.pendingTransfer = null;
 
   runAIPhase(() => {
     collectIncome(state);
@@ -131,10 +163,10 @@ function runAIPhase(onDone) {
       const defenderProv = getProvince(state, action.toId);
       const defenderDaimyo = getDaimyo(state, defenderProv.ownerId);
       if (defenderDaimyo.id === state.playerDaimyoId) {
-        startBattle(action.fromId, action.toId, action.sentTroops, () => step());
+        startBattle(action.fromId, action.toId, action.sentTroops, () => step(), action.marching);
         return;
       }
-      simulateAutoBattle(state, action.fromId, action.toId, action.sentTroops);
+      simulateAutoBattle(state, action.fromId, action.toId, action.sentTroops, action.marching);
     }
     step();
   }
@@ -143,15 +175,17 @@ function runAIPhase(onDone) {
 
 // ---- Battle flow ----
 
-function startBattle(fromId, toId, sentTroops, onComplete) {
-  const battle = createBattle(state, fromId, toId, sentTroops);
+function startBattle(fromId, toId, sentTroops, onComplete, marching = []) {
+  const battle = createBattle(state, fromId, toId, sentTroops, marching);
   battle.onComplete = onComplete;
   battle.highlightCells = [];
   state.battle = battle;
 
-  const attackerName = getDaimyo(state, battle.attackerDaimyoId).name;
-  const defenderName = getDaimyo(state, battle.defenderDaimyoId).name;
-  setBattleTitle(`${attackerName} 対 ${defenderName}`);
+  const sideLabel = (daimyoId, generals) => {
+    const house = getDaimyo(state, daimyoId).name;
+    return generals.length ? `${house}（${generals[0].name}）` : house;
+  };
+  setBattleTitle(`${sideLabel(battle.attackerDaimyoId, battle.marchingGenerals)} 対 ${sideLabel(battle.defenderDaimyoId, battle.defendingGenerals)}`);
   setBattleRoundInfo(`ラウンド ${battle.round} / ${MAX_ROUNDS}`);
   showBattleOverlay();
   renderAll(state);
@@ -241,7 +275,9 @@ function setupBattleEvents() {
         battle.highlightCells = reachableCells(battle, clicked.squad);
         drawBattleUI();
         const here = terrainAt(battle, clicked.squad.col, clicked.squad.row);
-        setBattleStatus(`${clicked.squad.troops}の兵（${here.name}／${terrainEffectText(here)}）— 移動先か隣接する敵部隊をクリック`);
+        const general = clicked.squad.general;
+        const who = general ? `${general.name}（統${general.lead} 武${general.valor}）` : '将なき隊';
+        setBattleStatus(`${who} 兵${clicked.squad.troops}／${here.name}・${terrainEffectText(here)} — 移動先か隣接する敵部隊をクリック`);
       }
       return;
     }
