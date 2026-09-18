@@ -1,9 +1,7 @@
-import { PROVINCES, DAIMYO_META } from './data.js';
-
 const KOKUDAKA_CAP = 300;
 const STARTING_GOLD = 600;
 
-export function createInitialState() {
+function createInitialState() {
   const provinces = {};
   const daimyos = {};
 
@@ -50,32 +48,32 @@ export function createInitialState() {
   };
 }
 
-export function maxTroops(province) {
+function maxTroops(province) {
   return Math.round(province.kokudaka * 55);
 }
 
-export function incomeOf(province) {
+function incomeOf(province) {
   return Math.round(province.kokudaka * 2.5);
 }
 
-export function getProvince(state, id) {
+function getProvince(state, id) {
   return state.provinces[id];
 }
 
-export function getDaimyo(state, id) {
+function getDaimyo(state, id) {
   return state.daimyos[id];
 }
 
-export function isEnemyProvince(state, myOwnerId, otherProvinceId) {
+function isEnemyProvince(state, myOwnerId, otherProvinceId) {
   return state.provinces[otherProvinceId].ownerId !== myOwnerId;
 }
 
-export function addLog(state, text) {
+function addLog(state, text) {
   state.log.unshift(text);
   if (state.log.length > 200) state.log.length = 200;
 }
 
-export function developProvince(state, provinceId) {
+function developProvince(state, provinceId) {
   const prov = getProvince(state, provinceId);
   const daimyo = getDaimyo(state, prov.ownerId);
   const cost = 50;
@@ -94,7 +92,7 @@ export function developProvince(state, provinceId) {
   return true;
 }
 
-export function recruitTroops(state, provinceId) {
+function recruitTroops(state, provinceId) {
   const prov = getProvince(state, provinceId);
   const daimyo = getDaimyo(state, prov.ownerId);
   const cap = maxTroops(prov);
@@ -115,14 +113,14 @@ export function recruitTroops(state, provinceId) {
   return true;
 }
 
-export function collectIncome(state) {
+function collectIncome(state) {
   for (const prov of Object.values(state.provinces)) {
     const daimyo = getDaimyo(state, prov.ownerId);
     daimyo.gold += incomeOf(prov);
   }
 }
 
-export function checkGameOver(state) {
+function checkGameOver(state) {
   const provinceList = Object.values(state.provinces);
   const playerOwnsAll = provinceList.every(p => p.ownerId === state.playerDaimyoId);
   if (playerOwnsAll) {
@@ -135,7 +133,7 @@ export function checkGameOver(state) {
   return null;
 }
 
-export function updateDaimyoAliveStatus(state) {
+function updateDaimyoAliveStatus(state) {
   for (const daimyo of Object.values(state.daimyos)) {
     daimyo.alive = Object.values(state.provinces).some(p => p.ownerId === daimyo.id);
   }

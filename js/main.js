@@ -1,21 +1,3 @@
-import {
-  createInitialState, getProvince, getDaimyo, addLog,
-  developProvince, recruitTroops, collectIncome,
-  checkGameOver, updateDaimyoAliveStatus,
-} from './state.js';
-import { aiDecideAndAct, simulateAutoBattle } from './ai.js';
-import {
-  createBattle, performAttack, moveSquadTo, reachableCells,
-  checkBattleEnd, allActed, switchTurn, aiTakeSideTurn,
-  resolveBattleOutcome, findSquad, findSquadAt, MAX_ROUNDS,
-} from './battle.js';
-import {
-  renderAll, getMapCanvas, getBattleCanvas, hitTestProvince,
-  getValidAttackTargets, cellFromPixel, drawBattle,
-  showBattleOverlay, hideBattleOverlay, setBattleStatus,
-  setBattleTitle, setBattleRoundInfo, showGameOverOverlay, hideGameOverOverlay,
-} from './ui.js';
-
 let state = createInitialState();
 
 function drawBattleUI() {

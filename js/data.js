@@ -1,6 +1,6 @@
 // Static map data: provinces and the daimyo houses that start in them.
 
-export const PROVINCES = [
+const PROVINCES = [
   { id: 'oshu',     name: '奥州',   x: 460, y: 40,  kokudaka: 70,  neighbors: ['dewa', 'kanto'] },
   { id: 'dewa',     name: '出羽',   x: 370, y: 70,  kokudaka: 55,  neighbors: ['oshu', 'echigo'] },
   { id: 'echigo',   name: '越後',   x: 350, y: 150, kokudaka: 75,  neighbors: ['dewa', 'shinano', 'kanto'] },
@@ -20,7 +20,7 @@ export const PROVINCES = [
 
 // Which daimyo house starts in each province, and its display color.
 // 'owari' is the player's house (Oda).
-export const DAIMYO_META = {
+const DAIMYO_META = {
   oshu:      { name: '伊達家', color: '#7a4fb5' },
   dewa:      { name: '最上家', color: '#4f9ab5' },
   echigo:    { name: '上杉家', color: '#4f6fb5' },

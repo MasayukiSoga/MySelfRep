@@ -1,17 +1,14 @@
-import { getProvince, getDaimyo, maxTroops } from './state.js';
-import { COLS, ROWS } from './battle.js';
-
 const PROVINCE_RADIUS = 26;
 const BATTLE_CELL = 60;
 
-export function getMapCanvas() {
+function getMapCanvas() {
   return document.getElementById('map-canvas');
 }
-export function getBattleCanvas() {
+function getBattleCanvas() {
   return document.getElementById('battle-canvas');
 }
 
-export function hitTestProvince(state, px, py) {
+function hitTestProvince(state, px, py) {
   for (const prov of Object.values(state.provinces)) {
     const dx = px - prov.x;
     const dy = py - prov.y;
@@ -20,14 +17,14 @@ export function hitTestProvince(state, px, py) {
   return null;
 }
 
-export function cellFromPixel(px, py) {
+function cellFromPixel(px, py) {
   const col = Math.floor(px / BATTLE_CELL);
   const row = Math.floor(py / BATTLE_CELL);
   if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return null;
   return { col, row };
 }
 
-export function drawMap(state) {
+function drawMap(state) {
   const canvas = getMapCanvas();
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -82,7 +79,7 @@ export function drawMap(state) {
   }
 }
 
-export function getValidAttackTargets(state) {
+function getValidAttackTargets(state) {
   const set = new Set();
   if (state.pendingAttackFrom) {
     const prov = getProvince(state, state.pendingAttackFrom);
@@ -94,14 +91,14 @@ export function getValidAttackTargets(state) {
   return set;
 }
 
-export function renderTopBar(state) {
+function renderTopBar(state) {
   const player = getDaimyo(state, state.playerDaimyoId);
   document.getElementById('turn-display').textContent = `第${state.turn}ターン`;
   document.getElementById('daimyo-display').textContent = player.name;
   document.getElementById('gold-display').textContent = `資金: ${player.gold}`;
 }
 
-export function renderSidePanel(state) {
+function renderSidePanel(state) {
   const infoDiv = document.getElementById('province-info');
   const sel = state.selectedProvinceId ? getProvince(state, state.selectedProvinceId) : null;
 
@@ -136,12 +133,12 @@ export function renderSidePanel(state) {
   }
 }
 
-export function renderLog(state) {
+function renderLog(state) {
   const list = document.getElementById('log-list');
   list.innerHTML = state.log.slice(0, 60).map(line => `<li>${line}</li>`).join('');
 }
 
-export function renderAll(state) {
+function renderAll(state) {
   renderTopBar(state);
   drawMap(state);
   renderSidePanel(state);
@@ -150,14 +147,14 @@ export function renderAll(state) {
 
 // ---- Battle rendering ----
 
-export function showBattleOverlay() {
+function showBattleOverlay() {
   document.getElementById('battle-overlay').classList.remove('hidden');
 }
-export function hideBattleOverlay() {
+function hideBattleOverlay() {
   document.getElementById('battle-overlay').classList.add('hidden');
 }
 
-export function drawBattle(state, battle) {
+function drawBattle(state, battle) {
   const canvas = getBattleCanvas();
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -218,21 +215,21 @@ function drawSquads(ctx, squads, color, selectedId) {
   }
 }
 
-export function setBattleStatus(text) {
+function setBattleStatus(text) {
   document.getElementById('battle-status').textContent = text;
 }
-export function setBattleTitle(text) {
+function setBattleTitle(text) {
   document.getElementById('battle-title').textContent = text;
 }
-export function setBattleRoundInfo(text) {
+function setBattleRoundInfo(text) {
   document.getElementById('battle-turn-info').textContent = text;
 }
 
-export function showGameOverOverlay(result) {
+function showGameOverOverlay(result) {
   document.getElementById('game-over-title').textContent = result.victory ? '勝利' : '敗北';
   document.getElementById('game-over-text').textContent = result.text;
   document.getElementById('game-over-overlay').classList.remove('hidden');
 }
-export function hideGameOverOverlay() {
+function hideGameOverOverlay() {
   document.getElementById('game-over-overlay').classList.add('hidden');
 }

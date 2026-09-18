@@ -1,9 +1,7 @@
-import { getProvince, getDaimyo, addLog, maxTroops } from './state.js';
-
-export const COLS = 9;
-export const ROWS = 7;
-export const MOVE_RANGE = 2;
-export const MAX_ROUNDS = 12;
+const COLS = 9;
+const ROWS = 7;
+const MOVE_RANGE = 2;
+const MAX_ROUNDS = 12;
 
 let nextSquadId = 1;
 
@@ -30,7 +28,7 @@ function makeSquads(troopAmount, col, rowSpread) {
   }));
 }
 
-export function createBattle(state, attackerProvinceId, defenderProvinceId, sentTroops) {
+function createBattle(state, attackerProvinceId, defenderProvinceId, sentTroops) {
   const attackerProv = getProvince(state, attackerProvinceId);
   const defenderProv = getProvince(state, defenderProvinceId);
   const attackerDaimyo = getDaimyo(state, attackerProv.ownerId);
@@ -92,7 +90,7 @@ function manhattan(a, b) {
   return Math.abs(a.col - b.col) + Math.abs(a.row - b.row);
 }
 
-export function findSquadAt(battle, col, row) {
+function findSquadAt(battle, col, row) {
   for (const sideName of ['attacker', 'defender']) {
     const sq = battle[sideName].squads.find(s => s.troops > 0 && s.col === col && s.row === row);
     if (sq) return { sideName, squad: sq };
@@ -100,7 +98,7 @@ export function findSquadAt(battle, col, row) {
   return null;
 }
 
-export function findSquad(battle, squadId) {
+function findSquad(battle, squadId) {
   for (const sideName of ['attacker', 'defender']) {
     const sq = battle[sideName].squads.find(s => s.id === squadId);
     if (sq) return { sideName, squad: sq };
@@ -108,7 +106,7 @@ export function findSquad(battle, squadId) {
   return null;
 }
 
-export function reachableCells(battle, squad) {
+function reachableCells(battle, squad) {
   const occ = occupiedMap(battle);
   const cells = [];
   for (let dc = -MOVE_RANGE; dc <= MOVE_RANGE; dc++) {
@@ -125,12 +123,12 @@ export function reachableCells(battle, squad) {
   return cells;
 }
 
-export function attackableTargets(battle, sideName, squad) {
+function attackableTargets(battle, sideName, squad) {
   const enemySide = sideOf(battle, otherSide(sideName));
   return aliveSquads(enemySide).filter(enemy => manhattan(squad, enemy) === 1);
 }
 
-export function moveSquadTo(battle, sideName, squadId, col, row) {
+function moveSquadTo(battle, sideName, squadId, col, row) {
   const side = sideOf(battle, sideName);
   const squad = side.squads.find(s => s.id === squadId);
   if (!squad || squad.acted) return false;
@@ -146,7 +144,7 @@ function computeDamage(troops) {
   return Math.round(troops * (0.25 + Math.random() * 0.25));
 }
 
-export function performAttack(battle, sideName, squadId, targetSquadId) {
+function performAttack(battle, sideName, squadId, targetSquadId) {
   const side = sideOf(battle, sideName);
   const enemySide = sideOf(battle, otherSide(sideName));
   const squad = side.squads.find(s => s.id === squadId);
@@ -169,24 +167,24 @@ export function performAttack(battle, sideName, squadId, targetSquadId) {
   return result;
 }
 
-export function checkBattleEnd(battle) {
+function checkBattleEnd(battle) {
   if (aliveSquads(battle.attacker).length === 0) return 'defender';
   if (aliveSquads(battle.defender).length === 0) return 'attacker';
   if (battle.round > MAX_ROUNDS) return 'defender';
   return null;
 }
 
-export function allActed(side) {
+function allActed(side) {
   return aliveSquads(side).every(s => s.acted);
 }
 
-export function resetActedFlags(side) {
+function resetActedFlags(side) {
   for (const sq of side.squads) sq.acted = false;
 }
 
 // Simple AI: for each of its squads, attack an adjacent enemy if possible,
 // otherwise move closer to the nearest enemy squad.
-export function aiTakeSideTurn(battle, sideName) {
+function aiTakeSideTurn(battle, sideName) {
   const side = sideOf(battle, sideName);
   const enemySide = sideOf(battle, otherSide(sideName));
   const events = [];
@@ -227,19 +225,19 @@ export function aiTakeSideTurn(battle, sideName) {
   return events;
 }
 
-export function advanceRoundIfNeeded(battle) {
+function advanceRoundIfNeeded(battle) {
   if (battle.turnSide === 'defender') {
     battle.round += 1;
   }
 }
 
-export function switchTurn(battle) {
+function switchTurn(battle) {
   advanceRoundIfNeeded(battle);
   battle.turnSide = otherSide(battle.turnSide);
   resetActedFlags(sideOf(battle, battle.turnSide));
 }
 
-export function resolveBattleOutcome(state, battle) {
+function resolveBattleOutcome(state, battle) {
   const attackerProv = getProvince(state, battle.attackerProvinceId);
   const defenderProv = getProvince(state, battle.defenderProvinceId);
   const attackerDaimyo = getDaimyo(state, battle.attackerDaimyoId);

@@ -1,12 +1,7 @@
-import {
-  getProvince, getDaimyo, addLog, maxTroops,
-  developProvince, recruitTroops,
-} from './state.js';
-
 // Decide and execute one action for an AI-controlled province.
 // Returns { type: 'attack', fromId, toId, sentTroops } when the province
 // wants to invade a neighbor (caller handles battle creation), otherwise null.
-export function aiDecideAndAct(state, provinceId) {
+function aiDecideAndAct(state, provinceId) {
   const prov = getProvince(state, provinceId);
   const daimyo = getDaimyo(state, prov.ownerId);
   const cap = maxTroops(prov);
@@ -41,7 +36,7 @@ export function aiDecideAndAct(state, provinceId) {
 
 // Quick, non-interactive resolution for battles where neither side is the
 // player (keeps AI-vs-AI turns fast; player battles always use the tactical map).
-export function simulateAutoBattle(state, attackerProvinceId, defenderProvinceId, sentTroops) {
+function simulateAutoBattle(state, attackerProvinceId, defenderProvinceId, sentTroops) {
   const attackerProv = getProvince(state, attackerProvinceId);
   const defenderProv = getProvince(state, defenderProvinceId);
   const attackerDaimyo = getDaimyo(state, attackerProv.ownerId);

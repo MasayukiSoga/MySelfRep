@@ -8,13 +8,11 @@ A browser-based, turn-based strategy game in vanilla JavaScript (no libraries/fr
 
 ## Running it
 
-Because the code uses native ES modules (`<script type="module">` and `import`/`export`), it must be served over HTTP — opening `index.html` directly via `file://` will fail with a CORS error. From the repo root:
+Just open `index.html` in a browser — double-clicking the file (`file://`) works. The scripts are deliberately plain classic scripts rather than ES modules, because `file://` blocks module loading with a CORS error; keep it that way unless you are willing to require a server. Serving over HTTP (`python3 -m http.server 8000`) also works.
 
-```
-python3 -m http.server 8000
-```
+Since the files share one global scope, `index.html` must load them in dependency order (data → state → battle → ai → ui → main), and new top-level names must not collide across files.
 
-Then open `http://localhost:8000/`. There is no build/lint/test tooling; verify changes by exercising the UI in a browser (or headlessly with Playwright, pointed at the local server, not the `file://` path).
+There is no build/lint/test tooling; verify changes by exercising the UI in a browser (or headlessly with Playwright).
 
 ## Architecture
 
