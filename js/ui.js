@@ -159,6 +159,12 @@ function drawBattle(state, battle) {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+  drawTerrain(ctx, battle);
+
+  if (battle.selectedSquadId) {
+    highlightCells(ctx, battle.highlightCells || []);
+  }
+
   ctx.strokeStyle = '#44583a';
   ctx.lineWidth = 1;
   for (let c = 0; c <= COLS; c++) {
@@ -179,19 +185,88 @@ function drawBattle(state, battle) {
 
   drawSquads(ctx, battle.attacker.squads, attackerDaimyo.color, battle.selectedSquadId);
   drawSquads(ctx, battle.defender.squads, defenderDaimyo.color, battle.selectedSquadId);
+}
 
-  if (battle.selectedSquadId) {
-    const found = [...battle.attacker.squads, ...battle.defender.squads].find(s => s.id === battle.selectedSquadId);
-    if (found) {
-      highlightCells(ctx, battle.highlightCells || []);
+function drawTerrain(ctx, battle) {
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < COLS; col++) {
+      const key = battle.terrain[row][col];
+      const terrain = TERRAIN[key];
+      const x = col * BATTLE_CELL;
+      const y = row * BATTLE_CELL;
+      ctx.fillStyle = terrain.color;
+      ctx.fillRect(x, y, BATTLE_CELL, BATTLE_CELL);
+      drawTerrainMark(ctx, key, x, y);
     }
   }
 }
 
+function drawTerrainMark(ctx, key, x, y) {
+  const cx = x + BATTLE_CELL / 2;
+  const cy = y + BATTLE_CELL / 2;
+
+  if (key === 'forest') {
+    ctx.fillStyle = '#4a7a3a';
+    for (const [ox, oy] of [[-12, 6], [6, 10], [-2, -8]]) {
+      ctx.beginPath();
+      ctx.moveTo(cx + ox, cy + oy - 9);
+      ctx.lineTo(cx + ox - 7, cy + oy + 5);
+      ctx.lineTo(cx + ox + 7, cy + oy + 5);
+      ctx.closePath();
+      ctx.fill();
+    }
+  } else if (key === 'mountain') {
+    ctx.fillStyle = '#7b776e';
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - 16);
+    ctx.lineTo(cx - 19, cy + 15);
+    ctx.lineTo(cx + 19, cy + 15);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#cfcbc2';
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - 16);
+    ctx.lineTo(cx - 7, cy - 4);
+    ctx.lineTo(cx + 7, cy - 4);
+    ctx.closePath();
+    ctx.fill();
+  } else if (key === 'hill') {
+    ctx.strokeStyle = '#8f7947';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(cx, cy + 10, 17, Math.PI, 0);
+    ctx.stroke();
+  } else if (key === 'river') {
+    ctx.strokeStyle = '#4c7fa8';
+    ctx.lineWidth = 3;
+    for (const oy of [-8, 4]) {
+      ctx.beginPath();
+      ctx.moveTo(cx - 20, cy + oy);
+      ctx.quadraticCurveTo(cx - 10, cy + oy - 6, cx, cy + oy);
+      ctx.quadraticCurveTo(cx + 10, cy + oy + 6, cx + 20, cy + oy);
+      ctx.stroke();
+    }
+  }
+}
+
+function renderBattleLegend() {
+  const legend = document.getElementById('battle-legend');
+  legend.innerHTML = Object.values(TERRAIN).map(t => `
+    <span class="terrain-chip">
+      <i style="background:${t.color}"></i>${t.name}<small>${terrainEffectText(t)}</small>
+    </span>
+  `).join('');
+}
+
 function highlightCells(ctx, cells) {
-  ctx.fillStyle = 'rgba(255, 224, 138, 0.35)';
+  ctx.fillStyle = 'rgba(255, 224, 138, 0.3)';
+  ctx.strokeStyle = 'rgba(255, 224, 138, 0.8)';
+  ctx.lineWidth = 2;
   for (const c of cells) {
-    ctx.fillRect(c.col * BATTLE_CELL + 2, c.row * BATTLE_CELL + 2, BATTLE_CELL - 4, BATTLE_CELL - 4);
+    const x = c.col * BATTLE_CELL + 2;
+    const y = c.row * BATTLE_CELL + 2;
+    ctx.fillRect(x, y, BATTLE_CELL - 4, BATTLE_CELL - 4);
+    ctx.strokeRect(x, y, BATTLE_CELL - 4, BATTLE_CELL - 4);
   }
 }
 

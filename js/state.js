@@ -12,6 +12,7 @@ function createInitialState() {
       x: def.x,
       y: def.y,
       neighbors: def.neighbors.slice(),
+      terrain: def.terrain,
       ownerId: def.id, // each province starts under its own house
       kokudaka: def.kokudaka,
       troops: 0,

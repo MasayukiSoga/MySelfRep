@@ -191,6 +191,32 @@ button:disabled {
   cursor: pointer;
 }
 
+#battle-legend {
+  width: 540px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.terrain-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.terrain-chip i {
+  width: 11px;
+  height: 11px;
+  border: 1px solid #0f1a10;
+  border-radius: 2px;
+}
+
+.terrain-chip small {
+  color: #6f7a8a;
+}
+
 #battle-controls {
   width: 540px;
   display: flex;

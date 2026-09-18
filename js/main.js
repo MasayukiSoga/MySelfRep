@@ -240,7 +240,8 @@ function setupBattleEvents() {
         battle.selectedSquadId = clicked.squad.id;
         battle.highlightCells = reachableCells(battle, clicked.squad);
         drawBattleUI();
-        setBattleStatus('移動先のマス、または隣接する敵部隊をクリックしてください。');
+        const here = terrainAt(battle, clicked.squad.col, clicked.squad.row);
+        setBattleStatus(`${clicked.squad.troops}の兵（${here.name}／${terrainEffectText(here)}）— 移動先か隣接する敵部隊をクリック`);
       }
       return;
     }
@@ -259,7 +260,7 @@ function setupBattleEvents() {
       battle.selectedSquadId = null;
       battle.highlightCells = [];
       if (res) {
-        setBattleStatus(`攻撃！ ${res.dmgToTarget}の損害を与えた${res.targetDefeated ? '（敵部隊を撃破）' : ''}`);
+        setBattleStatus(`${res.targetTerrainName}の敵に攻撃！ ${res.dmgToTarget}の損害${res.counter ? `（反撃 ${res.counter}）` : ''}${res.targetDefeated ? ' — 敵部隊を撃破' : ''}`);
       }
       afterBattleAction();
       return;
@@ -275,7 +276,7 @@ function setupBattleEvents() {
     const moved = moveSquadTo(battle, sideName, squad.id, cell.col, cell.row);
     battle.selectedSquadId = null;
     battle.highlightCells = [];
-    if (moved) setBattleStatus('部隊を移動した。');
+    if (moved) setBattleStatus(`${terrainAt(battle, cell.col, cell.row).name}へ部隊を移動した。`);
     afterBattleAction();
   });
 
@@ -312,6 +313,7 @@ function init() {
   setupCommandButtons();
   setupBattleEvents();
   setupGameOverEvents();
+  renderBattleLegend();
   addLog(state, '織田家として天下統一を目指しましょう。隣国を攻略し、勢力を広げてください。');
   renderAll(state);
 }
