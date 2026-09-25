@@ -17,7 +17,8 @@
   const $ = id => document.getElementById(id);
   const $game = $('game'), $wrap = $('wrap');
   const $turn = $('turnWin'), $terrain = $('terrainWin'), $unit = $('unitWin'), $info = $('infoWin');
-  const $menu = $('menu'), $banner = $('banner');
+  const $menu = $('menu'), $banner = $('banner'), $title = $('title');
+  const MAPS = window.TACTICS_MAPS;
 
   // ---------------------------------------------------------------- ユーティリティ
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -104,54 +105,115 @@
       left: ['#2c4c90', '#284888'], right: ['#203c78', '#1c3670'],
       blocked: true,
     },
+    floor: {
+      name: '石畳',
+      top: ['#a8a49a', '#9e9a90', '#b2aea4', '#948f86'],
+      left: ['#8a8680', '#807c76', '#94908a'], right: ['#66625e', '#5e5a56', '#6e6a66'],
+      topFx: (c, ux, uy) => near(ux * 2) || near(uy * 2) ? shade(c, -0.22) : c,
+      sideFx: (c, px, k) => brickFx(c, px, k),
+    },
+    brick: {
+      name: '城壁',
+      top: ['#9a968c', '#8e8a80', '#a6a298', '#848078'],
+      left: ['#a08c74', '#94806a', '#aa967e'], right: ['#76664f', '#6c5c48', '#806e58'],
+      sideFx: (c, px, k) => brickFx(c, px, k),
+    },
+    bridge: {
+      name: '木橋',
+      top: ['#9a6a3a', '#8c5e32', '#a67444', '#7e542c'],
+      left: ['#6a4424', '#603c20'], right: ['#4c3018', '#442a14'],
+      topFx: (c, ux) => near(ux * 4, 0.07) ? shade(c, -0.35) : c,
+    },
+    rubble: {
+      name: '瓦礫',
+      top: ['#8a8680', '#6e6a64', '#a09a90', '#7a6a58'],
+      left: ['#7a7670', '#6c6862', '#84807a'], right: ['#58544e', '#4e4a44', '#625e58'],
+    },
+    gate: {
+      name: '城門',
+      top: ['#5a3a20', '#4e321c', '#62422a'],
+      left: ['#7a5230', '#704a2a', '#845a36'], right: ['#5a3a22', '#52341e', '#62402a'],
+      // 縦板に鉄の帯と鋲
+      sideFx: (c, px, k) => {
+        const band = k % 14;
+        if (band === 4 || band === 5) return band === 4 && px % 6 === 2 ? [200, 200, 212] : [58, 58, 68];
+        return px % 4 === 0 ? shade(c, -0.3) : c;
+      },
+      blocked: true,
+    },
+  };
+  const near = (v, e = 0.05) => Math.abs(v - Math.round(v)) < e;
+  // 側面の段ごとに半分ずらしたレンガ目地
+  function brickFx(c, px, k) {
+    const row = Math.floor(k / 4);
+    return k % 4 === 0 || (px + (row % 2) * 4) % 8 === 0 ? shade(c, -0.35) : c;
+  }
+  // マップデータの地形文字。'.' は高さと周囲から自動で決める
+  const TERRAIN_CODES = {
+    g: 'grass', d: 'dirt', r: 'stone', s: 'sand', w: 'water',
+    f: 'floor', W: 'brick', b: 'bridge', x: 'rubble', G: 'floor',
   };
   for (const t of Object.values(TERRAIN)) {
     for (const k of ['top', 'left', 'right', 'fringe']) if (t[k]) t[k] = t[k].map(rgb);
   }
   const pick = (arr, r) => arr[Math.min(arr.length - 1, r < 0.5 ? 0 : r < 0.72 ? 1 : r < 0.9 ? 2 : 3)];
 
-  // 数字 = 高さ, w = 川, s = 浅瀬（渡れる）
-  const MAP_SRC = [
-    '111223445544',
-    '111223456544',
-    '111122345443',
-    '001112233333',
-    '000111222233',
-    'ww0011112222',
-    '1ww000111122',
-    '21www0011111',
-    '3211ss000111',
-    '43211www0011',
-    '4432111ww001',
-    '54322111ww00',
-  ];
-  const MW = MAP_SRC[0].length, MH = MAP_SRC.length;
-  const tiles = [];
-  for (let y = 0; y < MH; y++) {
-    for (let x = 0; x < MW; x++) {
-      const ch = MAP_SRC[y][x];
-      tiles.push({ x, y, ch, h: /\d/.test(ch) ? +ch : 0 });
-    }
-  }
+  // ---------------------------------------------------------------- マップ
+  // マップ定義は maps.js（window.TACTICS_MAPS）。loadMap で以下を差し替える
+  let MAP = null, MW = 0, MH = 0;
+  let tiles = [], drawOrder = [], units = [], gates = [];
+  let bounds = { x0: 0, x1: 0, y0: 0, y1: 0 };
   const tileAt = (x, y) => (x < 0 || y < 0 || x >= MW || y >= MH) ? null : tiles[y * MW + x];
+  // ルール上の高さ（足場）。城門のように見た目だけ高い物は topH で扱う
   const H = (x, y) => tileAt(x, y).h;
+  const topH = (x, y) => { const t = tileAt(x, y); return t.drawH ?? t.h; };
 
-  for (const t of tiles) {
-    const nearWater = DIRS.some(([dx, dy]) => tileAt(t.x + dx, t.y + dy)?.ch === 'w');
-    if (t.ch === 'w') t.type = 'water';
-    else if (t.ch === 's') t.type = 'sand';
-    else if (t.h >= 5) t.type = 'stone';
-    else if (t.h === 4) t.type = hash(t.x, t.y, 7) < 0.5 ? 'stone' : 'dirt';
-    else if (nearWater && t.h === 0) t.type = 'sand';
-    else t.type = hash(t.x, t.y, 3) < 0.18 ? 'dirt' : 'grass';
-    t.canvas = buildTile(t);
+  function autoTerrain(t) {
+    const nearWater = DIRS.some(([dx, dy]) => tileAt(t.x + dx, t.y + dy)?.tc === 'w');
+    if (t.h >= 5) return 'stone';
+    if (t.h === 4) return hash(t.x, t.y, 7) < 0.5 ? 'stone' : 'dirt';
+    if (nearWater && t.h === 0) return 'sand';
+    return hash(t.x, t.y, 3) < 0.18 ? 'dirt' : 'grass';
   }
-  const drawOrder = [...tiles].sort((a, b) => (a.x + a.y) - (b.x + b.y));
+
+  function loadMap(def) {
+    MAP = def;
+    MH = def.height.length;
+    MW = def.height[0].length;
+    tiles = [];
+    for (let y = 0; y < MH; y++) {
+      for (let x = 0; x < MW; x++) {
+        // 高さは 36 進 1 文字（0-9, a=10 … z=35）
+        tiles.push({ x, y, h: parseInt(def.height[y][x], 36), tc: def.terrain?.[y]?.[x] ?? '.' });
+      }
+    }
+    for (const t of tiles) t.type = TERRAIN_CODES[t.tc] ?? autoTerrain(t);
+    gates = (def.gates || []).map(g => {
+      const t = tileAt(g.x, g.y);
+      t.type = 'gate';
+      t.drawH = t.h + g.height;
+      return {
+        name: '城門', isObject: true, team: 'enemy', x: g.x, y: g.y,
+        hp: g.hp, maxHp: g.hp, def: g.def, agi: 0, facing: null,
+        offX: 0, offY: 0, alpha: 1, blink: false, dead: false,
+      };
+    });
+    for (const t of tiles) t.canvas = buildTile(t);
+    drawOrder = [...tiles].sort((a, b) => (a.x + a.y) - (b.x + b.y));
+    units = def.units.map(createUnit);
+
+    // カメラの可動域（マップ外の空白を映しすぎない）
+    const xs = tiles.map(t => (t.x - t.y) * 16), ys = tiles.map(t => (t.x + t.y) * 8 - topH(t.x, t.y) * HS);
+    const span = (lo, hi) => lo <= hi ? [lo, hi] : [(lo + hi) / 2, (lo + hi) / 2];
+    const [x0, x1] = span(Math.min(...xs) + 96, Math.max(...xs) - 96);
+    const [y0, y1] = span(Math.min(...ys) + 24, Math.max(...ys) - 56);
+    bounds = { x0, x1, y0, y1 };
+  }
 
   // 1 マス分の「柱」（上面ひし形 + 左右の側面）をドット単位で描く
   function buildTile(t) {
     const T = TERRAIN[t.type];
-    const depth = t.h * HS + BASE;
+    const depth = (t.drawH ?? t.h) * HS + BASE;
     const w = TW, h = TH + depth;
     const c = makeCanvas(w, h), g = c.getContext('2d');
     const img = g.createImageData(w, h), d = img.data;
@@ -166,6 +228,11 @@
         const dx = px < 16 ? 15 - px : px - 16, dy = py < 8 ? 7 - py : py - 8, v = dx + 2 * dy;
         if (v >= 16) continue;
         let col = pick(T.top, hash(gx + px, gy + py, 1));
+        if (T.topFx) {
+          // ひし形内のタイル座標 (ux, uy) ∈ [0,1]
+          const ax = (px + 0.5 - 16) / 16, ay = (py + 0.5) / 8;
+          col = T.topFx(col, (ax + ay) / 2, (ay - ax) / 2);
+        }
         if (v >= 14) col = py < 8 ? shade(col, px < 16 ? 0.3 : 0.14) : shade(col, -0.22);
         put(px, py, col);
       }
@@ -180,6 +247,7 @@
         if (py >= h) break;
         let col = pick(pal, hash(gx + px, gy + k, 2));
         if (T.fringe && k <= fringe) col = T.fringe[px < 16 ? 0 : 1];
+        else if (T.sideFx) col = T.sideFx(col, px, k);
         else if (k % HS === 0) col = shade(col, -0.2);
         if (k === depth) col = shade(col, -0.45);
         if (px === 15) col = shade(col, 0.12);
@@ -315,19 +383,7 @@
     return [front, front.map(flip), back.map(flip), back];
   }
 
-  const ROSTER = [
-    { name: 'レオン', cls: 'knight', team: 'player', x: 10, y: 9, lv: 5, hair: '#c89040', facing: 2 },
-    { name: 'セリカ', cls: 'archer', team: 'player', x: 11, y: 8, lv: 4, hair: '#e8d070', facing: 2 },
-    { name: 'ミラ', cls: 'wizard', team: 'player', x: 10, y: 11, lv: 4, hair: '#b05a30', facing: 3 },
-    { name: 'ガルド', cls: 'soldier', team: 'player', x: 9, y: 10, lv: 5, hair: '#503828', facing: 2 },
-    { name: 'バルバス', cls: 'knight', team: 'enemy', x: 8, y: 1, lv: 6, hair: '#484048', facing: 1, leader: true },
-    { name: 'ロイ', cls: 'soldier', team: 'enemy', x: 7, y: 2, lv: 4, hair: '#6a4020', facing: 1 },
-    { name: 'ザック', cls: 'soldier', team: 'enemy', x: 5, y: 0, lv: 4, hair: '#302018', facing: 1 },
-    { name: 'ヘルガ', cls: 'archer', team: 'enemy', x: 9, y: 2, lv: 4, hair: '#d0a060', facing: 0 },
-    { name: 'モルド', cls: 'wizard', team: 'enemy', x: 1, y: 10, lv: 4, hair: '#a0a0a8', facing: 0 },
-  ];
-
-  const units = ROSTER.map(r => {
+  function createUnit(r) {
     const C = CLASSES[r.cls], bonus = (r.lv - 4) * 3;
     const u = {
       ...r, C,
@@ -340,8 +396,10 @@
     u.mp = u.maxMp;
     u.frames = buildFrames(u);
     return u;
-  });
+  }
   const unitAt = (x, y) => units.find(u => !u.dead && u.x === x && u.y === y);
+  const gateAt = (x, y) => gates.find(g => !g.dead && g.x === x && g.y === y);
+  const targetAt = (x, y) => unitAt(x, y) || gateAt(x, y);
 
   // ---------------------------------------------------------------- ルール
   function dirToward(a, b) {
@@ -384,7 +442,7 @@
     const d = Math.abs(from.x - tgt.x) + Math.abs(from.y - tgt.y);
     const dh = H(from.x, from.y) - H(tgt.x, tgt.y);
     let [mn, mx] = u.C.range;
-    if (u.C.type === 'bow') mx += Math.max(0, Math.floor(dh / 2));
+    if (u.C.type === 'bow') mx += clamp(Math.floor(dh / 2), 0, 2);
     if (d < mn || d > mx) return false;
     return !(u.C.type === 'melee' && Math.abs(dh) > 2);
   }
@@ -394,12 +452,14 @@
   function forecast(att, tgt, from) {
     const dh = H(from.x, from.y) - H(tgt.x, tgt.y);
     const d = dirToward(tgt, from);
-    const rel = d === tgt.facing ? 'front' : d === (tgt.facing + 2) % 4 ? 'back' : 'side';
+    // 城門などの構造物には向きがない（常に正面扱い・必中）
+    const rel = tgt.facing == null || d === tgt.facing ? 'front' : d === (tgt.facing + 2) % 4 ? 'back' : 'side';
     const magic = att.C.type === 'magic';
     let dmg = magic ? att.atk * 1.3 - tgt.def * 0.4 : att.atk * 1.25 - tgt.def * 0.7;
     dmg *= 1 + clamp(dh * 0.08, -0.3, 0.5);
     if (!magic) dmg *= rel === 'back' ? 1.4 : rel === 'side' ? 1.2 : 1;
-    let hit = magic ? 92 : 80 + (att.agi - tgt.agi) * 2 + dh * 4 + (rel === 'back' ? 15 : rel === 'side' ? 7 : 0);
+    let hit = tgt.isObject ? 99
+      : magic ? 92 : 80 + (att.agi - tgt.agi) * 2 + dh * 4 + (rel === 'back' ? 15 : rel === 'side' ? 7 : 0);
     return { dmg: Math.max(1, Math.round(dmg)), hit: clamp(Math.round(hit), 5, 99), rel, magic };
   }
   const REL = { front: '', side: '側面から', back: '背後から!' };
@@ -407,7 +467,7 @@
   // ---------------------------------------------------------------- 状態
   const state = {
     phase: 'busy', turn: 0, active: null, moved: false, acted: false,
-    cursor: { x: 10, y: 9 }, reach: null, moveTiles: null, atkTiles: null,
+    cursor: { x: 0, y: 0 }, titleIndex: 0, reach: null, moveTiles: null, atkTiles: null,
     menuItems: [], menuIndex: 0, camUnit: null, hint: '', ox: 0, oy: 0,
   };
   const cam = { x: 0, y: 0 };
@@ -447,11 +507,24 @@
     }
   }
 
-  function drawTile(t, ox, oy, now, pulse) {
-    const [sx, sy] = worldPos(t.x, t.y, t.h);
-    const x = sx - 16 + ox, y = sy + oy;
-    if (x > VW || x + TW < 0 || y > VH || y + t.canvas.height < 0) return;
+  function drawTile(t, ox, oy, now, pulse, focus) {
+    const [sx, sy] = worldPos(t.x, t.y, t.drawH ?? t.h);
+    let x = sx - 16 + ox;
+    const y = sy + oy, bottom = y + t.canvas.height;
+    if (x > VW || x + TW < 0 || y > VH || bottom < 0) return;
+    // 手前にあってユニットやカーソルを大きく隠す柱（城壁など）は半透明にする
+    let alpha = 1;
+    for (const f of focus) {
+      if (t.x + t.y > f.k && Math.abs(sx + ox - f.x) < 22 && y < f.y - 8 && bottom > f.y - 16) { alpha = 0.35; break; }
+    }
+    const gate = t.type === 'gate' && gateAt(t.x, t.y);
+    if (gate) {
+      x += Math.round(gate.offX);
+      if (gate.blink && Math.floor(now / 50) % 2) alpha *= 0.4;
+    }
+    ctx.globalAlpha = alpha;
     ctx.drawImage(t.canvas, x, y);
+    ctx.globalAlpha = 1;
     if (t.type === 'water') {
       const f = Math.floor(now / 280);
       ctx.fillStyle = '#b0d4ff';
@@ -513,9 +586,9 @@
         }
       } else if (e.kind === 'fire') {
         const [cx, cy] = toScreen(...e.at);
-        const cols = ['#fff8c0', '#ffd040', '#ff8020', '#c02810'];
+        const cols = e.cols || ['#fff8c0', '#ffd040', '#ff8020', '#c02810'];
         if (p < 0.35) {
-          ctx.fillStyle = '#fff8c0';
+          ctx.fillStyle = cols[0];
           const r = Math.round(2 + p * 12);
           ctx.fillRect(cx - r, cy - 10 - r, r * 2, r * 2);
         }
@@ -543,7 +616,7 @@
     for (let i = popups.length - 1; i >= 0; i--) {
       const pp = popups[i], age = now - pp.t0;
       if (age > 1100) { popups.splice(i, 1); continue; }
-      const [cx, cy] = toScreen(pp.u.x, pp.u.y, H(pp.u.x, pp.u.y));
+      const [cx, cy] = toScreen(pp.u.x, pp.u.y, pp.h);
       const rise = age < 220 ? Math.sin(age / 220 * Math.PI) * 8 + age / 220 * 6 : 6;
       drawPixelText(pp.text, cx, Math.round(cy - 30 - rise), pp.color);
     }
@@ -551,29 +624,44 @@
 
   const cursorVisible = () => ['menu', 'look', 'move', 'target'].includes(state.phase);
 
-  function render(now) {
+  function cameraTarget() {
     const f = state.camUnit;
-    const [tx, ty] = f ? worldPos(f.rx, f.ry, f.rh) : worldPos(state.cursor.x, state.cursor.y, H(state.cursor.x, state.cursor.y));
-    // マップ外の空白を映しすぎないようにカメラの可動域を制限する
-    cam.x += (clamp(tx, -MH * 16 + 96, MW * 16 - 96) - cam.x) * 0.14;
-    cam.y += (clamp(ty, 16, (MW + MH) * 8 - 72) - cam.y) * 0.14;
+    return f ? worldPos(f.rx, f.ry, f.rh) : worldPos(state.cursor.x, state.cursor.y, topH(state.cursor.x, state.cursor.y));
+  }
+
+  function render(now) {
+    ctx.drawImage(BG, 0, 0);
+    if (!MAP) return;
+    const [tx, ty] = cameraTarget();
+    cam.x += (clamp(tx, bounds.x0, bounds.x1) - cam.x) * 0.14;
+    cam.y += (clamp(ty, bounds.y0, bounds.y1) - cam.y) * 0.14;
     const ox = Math.round(VW / 2 - cam.x), oy = Math.round(VH / 2 - 4 - cam.y);
     state.ox = ox; state.oy = oy;
 
-    ctx.drawImage(BG, 0, 0);
+    // 透過判定の対象：ユニットの足元とカーソル位置（画面座標 + 描画順キー）
+    const focus = [];
+    for (const u of units) {
+      if (u.gone) continue;
+      focus.push({ k: (u.sortKey ?? u.x + u.y) + 0.5, x: (u.rx - u.ry) * 16 + ox, y: (u.rx + u.ry) * 8 + 8 - u.rh * HS + oy });
+    }
+    if (cursorVisible()) {
+      const { x, y } = state.cursor, [cx, cy] = toScreen(x, y, topH(x, y));
+      focus.push({ k: x + y + 0.5, x: cx, y: cy });
+    }
+
     // 奥（x+y が小さい）から手前へ描く画家のアルゴリズム。ユニットは自分の足元のタイルの直後に描く
     const list = drawOrder.map(t => ({ k: t.x + t.y, t }));
     for (const u of units) if (!u.gone) list.push({ k: (u.sortKey ?? u.x + u.y) + 0.5, u });
     list.sort((a, b) => a.k - b.k);
     const pulse = 0.55 + 0.3 * Math.sin(now / 170);
-    for (const e of list) e.t ? drawTile(e.t, ox, oy, now, pulse) : drawUnit(e.u, ox, oy, now);
+    for (const e of list) e.t ? drawTile(e.t, ox, oy, now, pulse, focus) : drawUnit(e.u, ox, oy, now);
 
     drawEffects(now);
     drawPopups(now);
 
     if (cursorVisible()) {
       const { x, y } = state.cursor;
-      const [cx, cy] = toScreen(x, y, H(x, y));
+      const [cx, cy] = toScreen(x, y, topH(x, y));
       const bob = Math.round(Math.abs(Math.sin(now / 160)) * 3);
       ctx.drawImage(ARROW, cx - 4, cy - (unitAt(x, y) ? 32 : 18) - bob);
     }
@@ -598,8 +686,15 @@
       order.map(u => `<div class="ord ${u.team}">${u === active ? '▶' : '&nbsp;'}${u.name}</div>`).join('');
     $terrain.innerHTML = `<div class="ttl">${TERRAIN[t.type].name}</div><div>高さ <b>${t.h}</b></div>`;
 
-    const u = unitAt(cursor.x, cursor.y) || active;
-    if (u) {
+    const u = targetAt(cursor.x, cursor.y) || active;
+    if (u?.isObject) {
+      $unit.className = 'win enemy';
+      $unit.innerHTML =
+        `<div class="row"><span class="nm">${u.name}</span><span class="cl">構造物</span></div>` +
+        `<div class="row"><span class="lb">HP</span>${bar(u.hp, u.maxHp)}<span class="num">${u.hp}/${u.maxHp}</span></div>` +
+        `<div class="row">防<b>${u.def}</b></div>` +
+        `<div class="row"><span class="rel">破壊すると通れる</span></div>`;
+    } else if (u) {
       $unit.className = 'win ' + u.team;
       $unit.innerHTML =
         `<div class="row"><span class="nm">${u.name}</span><span class="cl">${u.C.name}</span><span class="lv">Lv${u.lv}</span></div>` +
@@ -610,7 +705,7 @@
 
     let info = `<div class="hint">${state.hint}</div>`;
     if (state.phase === 'target' && active) {
-      const tgt = unitAt(cursor.x, cursor.y);
+      const tgt = targetAt(cursor.x, cursor.y);
       if (tgt && tgt.team !== active.team && state.atkTiles?.has(key(cursor.x, cursor.y))) {
         const f = forecast(active, tgt, active);
         info = `<div class="row"><span class="nm ${tgt.team}">${tgt.name}</span>へ${f.magic ? 'ファイア' : '攻撃'}</div>` +
@@ -678,7 +773,8 @@
     state.phase = 'over';
     hideMenu();
     $banner.innerHTML = `<div class="box"><div class="big ${win ? '' : 'lose'}">${win ? 'VICTORY' : 'DEFEAT'}</div>` +
-      `<div>${win ? '敵リーダーを撃破した！' : '部隊は全滅した…'}</div><div class="small">Z / タップでもう一度</div></div>`;
+      `<div>${win ? '敵リーダーを撃破した！' : '部隊は全滅した…'}</div>` +
+      '<div class="small">Z・タップ: もう一度　X: マップ選択</div></div>';
     $banner.classList.remove('hidden');
   }
 
@@ -760,9 +856,9 @@
     state.hint = `${a.name}の${type === 'magic' ? 'ファイア' : type === 'bow' ? '射撃' : '攻撃'}！`;
     setCursor(t.x, t.y);
     if (type === 'magic') a.mp -= MAGIC_COST;
-    const [ax, ay] = worldPos(a.x, a.y, H(a.x, a.y)), [tx, ty] = worldPos(t.x, t.y, H(t.x, t.y));
+    const at = [t.x, t.y, t.isObject ? topH(t.x, t.y) - 3 : H(t.x, t.y)];
+    const [ax, ay] = worldPos(a.x, a.y, H(a.x, a.y)), [tx, ty] = worldPos(t.x, t.y, at[2]);
     const len = Math.hypot(tx - ax, ty - ay) || 1, nx = (tx - ax) / len, ny = (ty - ay) / len;
-    const at = [t.x, t.y, H(t.x, t.y)];
 
     if (type === 'melee') {
       await tween(110, p => { a.offX = nx * 6 * p; a.offY = ny * 6 * p; });
@@ -785,11 +881,11 @@
     if (Math.random() * 100 < fc.hit) {
       const dmg = Math.max(1, Math.round(fc.dmg * (0.9 + Math.random() * 0.2)));
       t.hp = Math.max(0, t.hp - dmg);
-      popups.push({ u: t, text: String(dmg), color: '#ffffff', t0: now });
+      popups.push({ u: t, h: topH(t.x, t.y), text: String(dmg), color: '#ffffff', t0: now });
       if (type === 'melee') effects.push({ kind: 'spark', at, t0: now, until: now + 220 });
       t.blink = true;
     } else {
-      popups.push({ u: t, text: 'MISS', color: '#a8c8ff', t0: now });
+      popups.push({ u: t, h: topH(t.x, t.y), text: 'MISS', color: '#a8c8ff', t0: now });
       await tween(200, p => { t.offX = nx * 5 * Math.sin(p * Math.PI); });
       t.offX = 0;
     }
@@ -798,13 +894,27 @@
     updateHUD();
     await wait(450);
     t.blink = false;
-    if (t.hp <= 0) {
+    if (t.hp <= 0 && t.isObject) {
+      destroyGate(t);
+    } else if (t.hp <= 0) {
       t.dead = true;
       state.hint = `${t.name}は倒れた…`;
       updateHUD();
       await tween(650, p => { t.alpha = 1 - p; });
       t.gone = true;
     }
+  }
+
+  // 城門は瓦礫のマスに置き換わり、通行できるようになる
+  function destroyGate(g) {
+    g.dead = true;
+    const t = tileAt(g.x, g.y), now = performance.now();
+    t.type = 'rubble';
+    delete t.drawH;
+    t.canvas = buildTile(t);
+    effects.push({ kind: 'fire', at: [g.x, g.y, t.h + 1], t0: now, until: now + 600, cols: ['#e8e0d0', '#b0a898', '#8a8078', '#5a544e'] });
+    state.hint = '城門を破壊した！';
+    updateHUD();
   }
 
   // ---------------------------------------------------------------- 敵 AI
@@ -894,7 +1004,7 @@
         afterAction();
       })();
     } else if (phase === 'target') {
-      const t = unitAt(c.x, c.y);
+      const t = targetAt(c.x, c.y);
       if (!t || t.team === u.team || !state.atkTiles.has(k)) return;
       state.phase = 'busy';
       state.atkTiles = null;
@@ -905,8 +1015,10 @@
       })();
     } else if (phase === 'facing') {
       endTurn();
+    } else if (phase === 'title') {
+      startBattle(MAPS[state.titleIndex]);
     } else if (phase === 'over') {
-      location.reload();
+      location.search = '?map=' + encodeURIComponent(MAP.id);
     }
   }
 
@@ -921,12 +1033,18 @@
       openMenu();
     } else if (p === 'facing' && !(state.moved && state.acted)) {
       openMenu();
+    } else if (p === 'over') {
+      location.href = location.pathname;
     }
   }
 
   function onDir(dx, dy) {
     const p = state.phase;
-    if (p === 'menu') {
+    if (p === 'title') {
+      const n = MAPS.length;
+      state.titleIndex = (state.titleIndex + (dx || dy) + n) % n;
+      renderTitle();
+    } else if (p === 'menu') {
       if (!dy) return;
       const n = state.menuItems.length;
       state.menuIndex = (state.menuIndex + dy + n) % n;
@@ -948,6 +1066,7 @@
 
   // 画面上の点から、手前に描かれているタイル（またはユニット）を探す
   function pickTile(clientX, clientY) {
+    if (!MAP) return null;
     const r = canvas.getBoundingClientRect();
     const lx = (clientX - r.left) * VW / r.width, ly = (clientY - r.top) * VH / r.height;
     const { ox, oy } = state;
@@ -957,14 +1076,14 @@
       if (lx >= gx - 6 && lx < gx + 6 && ly >= gy - 18 && ly < gy) return tileAt(u.x, u.y);
     }
     for (let i = drawOrder.length - 1; i >= 0; i--) {
-      const t = drawOrder[i], [sx, sy] = worldPos(t.x, t.y, t.h);
+      const t = drawOrder[i], th = t.drawH ?? t.h, [sx, sy] = worldPos(t.x, t.y, th);
       const px = Math.floor(lx - (sx - 16 + ox)), py = Math.floor(ly - (sy + oy));
       if (px < 0 || px >= TW || py < 0 || py >= t.canvas.height) continue;
       const dx = px < 16 ? 15 - px : px - 16;
       if (py < TH) {
         const dy = py < 8 ? 7 - py : py - 8;
         if (dx + 2 * dy < 16) return t;
-      } else if (py <= 8 + ((15 - dx) >> 1) + t.h * HS + BASE) {
+      } else if (py <= 8 + ((15 - dx) >> 1) + th * HS + BASE) {
         return t;
       }
     }
@@ -1035,15 +1154,45 @@
   fit();
 
   // ---------------------------------------------------------------- 開始
-  {
-    const [tx, ty] = worldPos(state.cursor.x, state.cursor.y, H(state.cursor.x, state.cursor.y));
-    cam.x = tx; cam.y = ty;
+  function renderTitle() {
+    const cur = MAPS[state.titleIndex];
+    $title.innerHTML = '<div class="ttl">マップ選択</div><ul>' +
+      MAPS.map((m, i) => `<li data-i="${i}" class="${i === state.titleIndex ? 'sel' : ''}">${m.name}` +
+        `<span>${m.height[0].length}×${m.height.length}</span></li>`).join('') +
+      `</ul><div class="desc">${cur.desc}</div>`;
   }
-  state.hint = '戦闘開始';
-  updateHUD();
-  requestAnimationFrame(frame);
-  (async () => {
-    await showBanner('<div class="big">BATTLE START</div><div>勝利条件：敵リーダー バルバスの撃破</div>', 2200);
+
+  function showTitle() {
+    state.phase = 'title';
+    $game.classList.add('title');
+    $title.classList.remove('hidden');
+    renderTitle();
+  }
+
+  async function startBattle(def) {
+    $game.classList.remove('title');
+    $title.classList.add('hidden');
+    loadMap(def);
+    const first = units.find(u => u.team === 'player');
+    state.phase = 'busy';
+    state.cursor = { x: first.x, y: first.y };
+    const [tx, ty] = cameraTarget();
+    cam.x = clamp(tx, bounds.x0, bounds.x1);
+    cam.y = clamp(ty, bounds.y0, bounds.y1);
+    state.hint = '戦闘開始';
+    updateHUD();
+    await showBanner(`<div class="big">BATTLE START</div><div>${def.name}</div><div>勝利条件：${def.objective}</div>`, 2400);
     nextTurn();
-  })();
+  }
+
+  $title.addEventListener('click', e => {
+    const li = e.target.closest('li');
+    if (!li) return;
+    state.titleIndex = +li.dataset.i;
+    confirm();
+  });
+
+  requestAnimationFrame(frame);
+  const requested = MAPS.find(m => m.id === new URLSearchParams(location.search).get('map'));
+  if (requested) startBattle(requested); else showTitle();
 })();

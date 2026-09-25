@@ -138,6 +138,20 @@ body {
 #banner .player { color: #a8ccff; }
 #banner .enemy { color: #ffb0a8; }
 
+/* マップ選択画面 */
+#game.title .win:not(#title) { display: none; }
+#title {
+  left: 40px; right: 40px; top: 44px;
+  padding: 4px 8px 6px;
+  pointer-events: auto;
+}
+#title .ttl { color: #ffe070; text-align: center; margin-bottom: 3px; }
+#title ul { list-style: none; }
+#title li { position: relative; padding-left: 10px; height: 12px; line-height: 12px; cursor: pointer; display: flex; }
+#title li span { margin-left: auto; color: #b8c0e8; }
+#title li.sel::before { content: '▶'; position: absolute; left: 0; color: #ffe070; font-size: 7px; }
+#title .desc { margin-top: 4px; padding-top: 3px; border-top: 1px solid #6a78c8; color: #d8ddf8; min-height: 30px; }
+
 .hidden { display: none !important; }
 
 #controls { display: flex; gap: 12px; }
