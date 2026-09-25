@@ -6,14 +6,19 @@
 //           g 草原 / d 荒れ地 / r 岩場 / s 砂地 / w 川・堀（通行不可）
 //           f 石畳 / W 城壁 / b 木橋 / x 瓦礫 / G 城門の床（gates と併用）
 // gates   : 壊せる城門。{ x, y, width（x 方向のマス数）, top（門楼の上端の高さ）, door（床から扉の上端までの段数）, hp, def }
-// units   : team は 'player' / 'enemy'。leader: true の敵を倒すと勝利。
+// objective: { type, text, rounds?, goal? }
+//           type = leader（leader: true の敵を倒す）/ annihilate（全滅）/ survive（rounds ラウンド耐える）
+//                  / defend（rounds ラウンドの間、goal のマスに敵を入れない）。どの型でも敵全滅で勝利。
+//           ラウンドは WT の経過 100 ごとに 1 進む（全員がおよそ 1 回ずつ行動する長さ）
+// reinforcements: [{ round, text, units: [...] }] 指定ラウンドに入ると増援が出現
+// units   : team は 'player' / 'enemy'。cls は knight / soldier / archer / wizard / goblin / wolf / orc。
 //           facing 0:+x(右下) 1:+y(左下) 2:-x(左上) 3:-y(右上)
 window.TACTICS_MAPS = [
   {
     id: 'field',
     name: '川辺の草原',
     desc: '浅瀬で川を渡れる、起伏のある草原での野戦。丘の上の弓兵に注意。',
-    objective: '敵リーダー バルバスの撃破',
+    objective: { type: 'leader', text: '敵リーダー バルバスの撃破' },
     height: [
       '111223445544',
       '111223456544',
@@ -58,7 +63,7 @@ window.TACTICS_MAPS = [
     id: 'gate',
     name: '城門突破',
     desc: '堀と高い城壁に守られた城を攻める。巨大な城門を打ち破るか、右手の崩れた城壁から回り込め。',
-    objective: '城内の敵将 ヴォルクの撃破',
+    objective: { type: 'leader', text: '城内の敵将 ヴォルクの撃破' },
     // 奥（y が小さい側）が城内。y=6〜7 が厚い城壁、x=8〜11 が城門、y=8 が堀、手前が城外の野原
     height: [
       '11111115555551111111',
@@ -125,6 +130,86 @@ window.TACTICS_MAPS = [
       { name: 'ベイン', cls: 'archer', team: 'enemy', x: 12, y: 7, lv: 4, hair: '#404040', facing: 1 },
       { name: 'ユーリ', cls: 'archer', team: 'enemy', x: 2, y: 7, lv: 4, hair: '#c08050', facing: 1 },
       { name: 'モルド', cls: 'wizard', team: 'enemy', x: 12, y: 6, lv: 4, hair: '#a0a0a8', facing: 1 },
+    ],
+  },
+  {
+    id: 'defense',
+    name: '防衛線',
+    desc: '魔物の大群が村へ押し寄せる。増援を含む 3 つの波を 6 ラウンドしのぎ、村の門（緑に光るマス）を守り抜け。',
+    objective: {
+      type: 'defend', rounds: 6, text: '6 ラウンド村の門を守る',
+      goal: [[9, 13], [10, 13], [11, 13], [12, 13], [13, 13], [14, 13]],
+    },
+    // 奥（y が小さい側）から魔物が来る。左右の尾根で中央に絞られ、手前が村
+    height: [
+      '000000000000000000000000',
+      '001100000000000000011000',
+      '012210000000000000122100',
+      '001100000111100000011000',
+      '000000001222210000000000',
+      '000000000111100000000000',
+      '222210000000000000012222',
+      '333221000000000000122333',
+      '222210000000000000012222',
+      '000000000000000000000000',
+      '000000220000000022000000',
+      '000000220000000022000000',
+      '000000111111111111000000',
+      '000000111111111111000000',
+    ],
+    terrain: [
+      '........................',
+      '........................',
+      '........................',
+      '........................',
+      '........................',
+      '........................',
+      '........................',
+      '........................',
+      '........................',
+      '........................',
+      '......WW........WW......',
+      '......WW........WW......',
+      '......ffffffffffff......',
+      '......ffffffffffff......',
+    ],
+    units: [
+      { name: 'レオン', cls: 'knight', team: 'player', x: 11, y: 10, lv: 5, hair: '#c89040', facing: 3 },
+      { name: 'ガルド', cls: 'soldier', team: 'player', x: 9, y: 10, lv: 5, hair: '#503828', facing: 3 },
+      { name: 'ブルーノ', cls: 'soldier', team: 'player', x: 14, y: 10, lv: 5, hair: '#b0703a', facing: 3 },
+      { name: 'セリカ', cls: 'archer', team: 'player', x: 6, y: 10, lv: 4, hair: '#e8d070', facing: 3 },
+      { name: 'ノア', cls: 'archer', team: 'player', x: 17, y: 10, lv: 4, hair: '#8a5a3a', facing: 3 },
+      { name: 'ミラ', cls: 'wizard', team: 'player', x: 12, y: 11, lv: 4, hair: '#b05a30', facing: 3 },
+      { name: 'ゴブリン', cls: 'goblin', team: 'enemy', x: 4, y: 1, lv: 4, hair: '#303030', facing: 1 },
+      { name: 'ゴブリン', cls: 'goblin', team: 'enemy', x: 10, y: 1, lv: 4, hair: '#303030', facing: 1 },
+      { name: 'ゴブリン', cls: 'goblin', team: 'enemy', x: 14, y: 0, lv: 4, hair: '#303030', facing: 1 },
+      { name: 'ゴブリン', cls: 'goblin', team: 'enemy', x: 19, y: 1, lv: 4, hair: '#303030', facing: 1 },
+      { name: 'ウルフ', cls: 'wolf', team: 'enemy', x: 8, y: 0, lv: 4, hair: '#303030', facing: 1 },
+      { name: 'ウルフ', cls: 'wolf', team: 'enemy', x: 16, y: 0, lv: 4, hair: '#303030', facing: 1 },
+    ],
+    // round: このラウンドに入ったら出現（位置が塞がっていれば近くの空きマス）
+    reinforcements: [
+      {
+        round: 2, text: '魔物の第二波が来た！',
+        units: [
+          { name: 'ゴブリン', cls: 'goblin', team: 'enemy', x: 3, y: 0, lv: 4, hair: '#303030', facing: 1 },
+          { name: 'ゴブリン', cls: 'goblin', team: 'enemy', x: 12, y: 0, lv: 4, hair: '#303030', facing: 1 },
+          { name: 'ゴブリン', cls: 'goblin', team: 'enemy', x: 20, y: 0, lv: 4, hair: '#303030', facing: 1 },
+          { name: 'ウルフ', cls: 'wolf', team: 'enemy', x: 7, y: 0, lv: 4, hair: '#303030', facing: 1 },
+          { name: 'ウルフ', cls: 'wolf', team: 'enemy', x: 17, y: 0, lv: 4, hair: '#303030', facing: 1 },
+        ],
+      },
+      {
+        round: 4, text: 'オークが率いる本隊が現れた！',
+        units: [
+          { name: 'オーク', cls: 'orc', team: 'enemy', x: 11, y: 0, lv: 4, hair: '#303030', facing: 1 },
+          { name: 'オーク', cls: 'orc', team: 'enemy', x: 13, y: 0, lv: 4, hair: '#303030', facing: 1 },
+          { name: 'ゴブリン', cls: 'goblin', team: 'enemy', x: 5, y: 0, lv: 4, hair: '#303030', facing: 1 },
+          { name: 'ゴブリン', cls: 'goblin', team: 'enemy', x: 9, y: 0, lv: 4, hair: '#303030', facing: 1 },
+          { name: 'ゴブリン', cls: 'goblin', team: 'enemy', x: 15, y: 0, lv: 4, hair: '#303030', facing: 1 },
+          { name: 'ゴブリン', cls: 'goblin', team: 'enemy', x: 19, y: 0, lv: 4, hair: '#303030', facing: 1 },
+        ],
+      },
     ],
   },
 ];

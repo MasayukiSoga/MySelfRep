@@ -64,12 +64,13 @@ body {
   background: linear-gradient(180deg, #b8474a 0%, #7a2230 55%, #501420 100%);
 }
 
-#turnWin { left: 3px; top: 3px; width: 64px; }
+#turnWin { left: 3px; top: 3px; width: 72px; }
 #terrainWin { right: 3px; top: 3px; width: 54px; }
 #unitWin { left: 3px; bottom: 3px; width: 138px; height: 46px; }
 #infoWin { right: 3px; bottom: 3px; width: 106px; height: 46px; }
 
 #turnWin .ttl, #terrainWin .ttl { color: #ffe070; }
+#turnWin .rd { color: #a8f0b8; }
 .ord { white-space: nowrap; overflow: hidden; }
 .ord.player, .nm.player { color: #a8ccff; }
 .ord.enemy, .nm.enemy { color: #ffb0a8; }

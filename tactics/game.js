@@ -209,6 +209,11 @@
     for (const t of tiles) t.canvas = buildTile(t);
     drawOrder = [...tiles].sort((a, b) => (a.x + a.y) - (b.x + b.y));
     units = def.units.map(createUnit);
+    // 勝利条件: leader（敵将撃破）/ annihilate（全滅）/ survive（N ラウンド耐える）/ defend（N ラウンド拠点を守る）
+    state.objective = typeof def.objective === 'string' ? { type: 'leader', text: def.objective } : def.objective;
+    state.goal = new Set((state.objective.goal || []).map(([x, y]) => key(x, y)));
+    state.waves = (def.reinforcements || []).map(w => ({ ...w, done: false }));
+    state.clock = 0;
 
     // カメラの可動域（マップ外の空白を映しすぎない）
     const xs = tiles.map(t => (t.x - t.y) * 16), ys = tiles.map(t => (t.x + t.y) * 8 - topH(t.x, t.y) * HS);
@@ -308,6 +313,7 @@
   const OV_MOVE = makeDiamond([70, 130, 255, 120], [170, 205, 255, 220]);
   const OV_ATK = makeDiamond([255, 60, 50, 160], [255, 170, 160, 220]);
   const OV_CURSOR = makeDiamond([255, 250, 200, 50], [255, 236, 80, 255]);
+  const OV_GOAL = makeDiamond([80, 230, 120, 110], [180, 255, 190, 230]);
 
   const ARROW = pixelArt(
     ['.ooooooo.', 'oyyyyyyyo', '.oyyyyyo.', '..oyyyo..', '...oyo...', '....o....'],
@@ -330,6 +336,19 @@
     soldier: { name: 'ソルジャー', sprite: 'fighter', hp: 82, mp: 8, atk: 26, def: 15, agi: 10, move: 4, jump: 2, range: [1, 1], wt: 100, type: 'melee' },
     archer: { name: 'アーチャー', sprite: 'fighter', hp: 66, mp: 10, atk: 23, def: 10, agi: 13, move: 4, jump: 2, range: [2, 4], wt: 95, type: 'bow' },
     wizard: { name: 'ウィザード', sprite: 'caster', hp: 56, mp: 48, atk: 30, def: 8, agi: 9, move: 3, jump: 1, range: [1, 3], wt: 105, type: 'magic' },
+    // 魔物はチーム色ではなく固有の配色（pal）
+    goblin: {
+      name: 'ゴブリン', sprite: 'goblin', hp: 48, mp: 0, atk: 21, def: 8, agi: 12, move: 4, jump: 2, range: [1, 1], wt: 90, type: 'melee',
+      pal: { s: '#6aa04a', h: '#4a7a34', k: '#ffd040', a: '#7a5a3a', b: '#5a3e26', n: '#6a4a2a' },
+    },
+    wolf: {
+      name: 'ウルフ', sprite: 'wolf', hp: 42, mp: 0, atk: 22, def: 6, agi: 16, move: 6, jump: 3, range: [1, 1], wt: 80, type: 'melee',
+      pal: { h: '#8a8a96', b: '#5c5c68', k: '#ffcc30' },
+    },
+    orc: {
+      name: 'オーク', sprite: 'fighter', hp: 110, mp: 0, atk: 32, def: 16, agi: 6, move: 3, jump: 1, range: [1, 1], wt: 120, type: 'melee',
+      pal: { s: '#7a9a5a', h: '#2a2a2a', k: '#ff4020', a: '#6a5040', b: '#4a3428', c: '#8a2a2a', w: '#a0a0a8' },
+    },
   };
 
   // o:輪郭 h:髪 s:肌 k:目 a:鎧/ローブ b:その暗部 c:サーコート/帽子 w:武器 g:金 l:脚 n:杖
@@ -357,6 +376,56 @@
         '.....oloolo.....',
         '....oolooloo....',
         '....ooo..ooo....',
+      ],
+    },
+    goblin: {
+      head: [5, 9], feet: 15,
+      rows: [
+        '................',
+        '................',
+        '................',
+        '................',
+        '.....oooooo...n.',
+        '.oo.osssssso..nn',
+        '.oso.osksskso.n.',
+        '..ossssssssso.n.',
+        '...osooooooso.n.',
+        '....ossssssoson.',
+        '....oaaaaaaos...',
+        '...osabbbbao....',
+        '...os.aaaa.o....',
+        '....oaaaaaao....',
+        '....obbbbbbo....',
+        '.....oso.oso....',
+        '.....oso.oso....',
+        '....ooso.osoo...',
+        '....oooo.oooo...',
+        '................',
+      ],
+    },
+    wolf: {
+      head: [10, 10], feet: 16,
+      rows: [
+        '................',
+        '................',
+        '................',
+        '................',
+        '................',
+        '................',
+        '................',
+        '................',
+        '...........o.o..',
+        '..........ohoho.',
+        '.........ohhkhho',
+        '.o.......ohhhhho',
+        'oho.ooooohhhhoo.',
+        '.ohohhhhhhhhho..',
+        '..ohhhhhhhhhhho.',
+        '..ohbbbbbbbbhho.',
+        '..ohbo....ohbo..',
+        '..ohbo....ohbo..',
+        '..ohbo....ohbo..',
+        '..oooo....oooo..',
       ],
     },
     caster: {
@@ -399,6 +468,7 @@
     if (u.cls === 'archer') { p.w = '#a8743c'; p.c = u.team === 'player' ? '#7aac5a' : '#8a7a48'; }
     if (u.cls === 'soldier') p.c = '#9aa2b0';
     if (u.leader) p.c = '#d8b040';
+    Object.assign(p, u.C.pal);
     return Object.fromEntries(Object.entries(p).map(([k, v]) => [k, rgb(v)]));
   }
 
@@ -574,6 +644,11 @@
       ctx.drawImage(ov, x, y);
       ctx.globalAlpha = 1;
     }
+    if (state.goal?.has(k)) {
+      ctx.globalAlpha = 0.45 + 0.25 * Math.sin(now / 300);
+      ctx.drawImage(OV_GOAL, x, y);
+      ctx.globalAlpha = 1;
+    }
     if (cursorVisible() && state.cursor.x === t.x && state.cursor.y === t.y) {
       ctx.globalAlpha = 0.65 + 0.35 * Math.sin(now / 90);
       ctx.drawImage(OV_CURSOR, x, y);
@@ -714,7 +789,8 @@
     const { cursor, active } = state;
     const t = tileAt(cursor.x, cursor.y);
     const order = units.filter(u => !u.dead).sort((a, b) => a.wt - b.wt).slice(0, 4);
-    $turn.innerHTML = `<div class="ttl">TURN ${state.turn}</div>` +
+    const rounds = state.objective?.rounds;
+    $turn.innerHTML = `<div class="ttl">TURN ${state.turn}&nbsp;<span class="rd">R${round()}${rounds ? '/' + rounds : ''}</span></div>` +
       order.map(u => `<div class="ord ${u.team}">${u === active ? '▶' : '&nbsp;'}${u.name}</div>`).join('');
     $terrain.innerHTML = `<div class="ttl">${TERRAIN[t.type].name}</div><div>高さ <b>${t.h}</b></div>`;
 
@@ -729,7 +805,7 @@
     } else if (u) {
       $unit.className = 'win ' + u.team;
       $unit.innerHTML =
-        `<div class="row"><span class="nm">${u.name}</span><span class="cl">${u.C.name}</span><span class="lv">Lv${u.lv}</span></div>` +
+        `<div class="row"><span class="nm">${u.name}</span><span class="cl">${u.name === u.C.name ? '' : u.C.name}</span><span class="lv">Lv${u.lv}</span></div>` +
         `<div class="row"><span class="lb">HP</span>${bar(u.hp, u.maxHp)}<span class="num">${u.hp}/${u.maxHp}</span></div>` +
         `<div class="row"><span class="lb">MP</span>${bar(u.mp, u.maxMp, 'mp')}<span class="num">${u.mp}/${u.maxMp}</span></div>` +
         `<div class="row">WT <b>${u.wt}</b>&nbsp;攻<b>${u.atk}</b>&nbsp;防<b>${u.def}</b>${u.leader ? '&nbsp;<span class="rel">★将</span>' : ''}</div>`;
@@ -769,6 +845,9 @@
     const alive = units.filter(u => !u.dead).sort((a, b) => a.wt - b.wt || b.agi - a.agi);
     const u = alive[0], m = u.wt;
     for (const v of alive) v.wt -= m;
+    state.clock += m;
+    for (const w of state.waves) if (!w.done && round() >= w.round) await spawnWave(w);
+    if (checkEnd()) return;
     Object.assign(state, { active: u, moved: false, acted: false, phase: 'busy', turn: state.turn + 1, moveTiles: null, atkTiles: null });
     u.mp = Math.min(u.maxMp, u.mp + 2);
     state.hint = u.team === 'player' ? 'コマンドを選択' : `${u.name}の行動`;
@@ -793,21 +872,61 @@
     setTimeout(nextTurn, 250);
   }
 
+  // WT の経過 100 ごとに 1 ラウンド
+  const round = () => Math.floor((state.clock || 0) / 100) + 1;
+
   function checkEnd() {
     if (state.phase === 'over') return true;
-    const leader = units.find(u => u.leader);
-    if (leader.dead || !units.some(u => u.team === 'enemy' && !u.dead)) { gameOver(true); return true; }
-    if (!units.some(u => u.team === 'player' && !u.dead)) { gameOver(false); return true; }
+    const o = state.objective;
+    const enemies = units.filter(u => u.team === 'enemy' && !u.dead);
+    const end = (win, msg) => { gameOver(win, msg); return true; };
+    if (!units.some(u => u.team === 'player' && !u.dead)) return end(false, '部隊は全滅した…');
+    if (o.type === 'defend' && enemies.some(u => state.goal.has(key(u.x, u.y)))) return end(false, '防衛線を突破された…');
+    if (o.type === 'leader' && units.find(u => u.leader)?.dead) return end(true, '敵リーダーを撃破した！');
+    if ((o.type === 'survive' || o.type === 'defend') && round() > o.rounds) return end(true, `${o.rounds} ラウンドを守り抜いた！`);
+    if (!enemies.length && state.waves.every(w => w.done)) return end(true, '敵を全滅させた！');
     return false;
   }
 
-  function gameOver(win) {
+  function gameOver(win, msg) {
     state.phase = 'over';
     hideMenu();
     $banner.innerHTML = `<div class="box"><div class="big ${win ? '' : 'lose'}">${win ? 'VICTORY' : 'DEFEAT'}</div>` +
-      `<div>${win ? '敵リーダーを撃破した！' : '部隊は全滅した…'}</div>` +
+      `<div>${msg}</div>` +
       '<div class="small">Z・タップ: もう一度　X: マップ選択</div></div>';
     $banner.classList.remove('hidden');
+  }
+
+  // 増援：指定位置が塞がっていれば近くの空きマスに出現する
+  function freeSpotNear(x, y) {
+    let best = null, bestD = Infinity;
+    for (const t of tiles) {
+      if (TERRAIN[t.type].blocked || targetAt(t.x, t.y)) continue;
+      const d = Math.abs(t.x - x) + Math.abs(t.y - y);
+      if (d < bestD) { bestD = d; best = t; }
+    }
+    return best;
+  }
+
+  async function spawnWave(w) {
+    w.done = true;
+    const spawned = [];
+    for (const r of w.units) {
+      const spot = freeSpotNear(r.x, r.y);
+      if (!spot) continue;
+      const u = createUnit({ ...r, x: spot.x, y: spot.y });
+      u.alpha = 0;
+      u.wt = Math.round(u.C.wt * (0.3 + Math.random() * 0.5));
+      units.push(u);
+      spawned.push(u);
+    }
+    if (!spawned.length) return;
+    state.phase = 'busy';
+    setCursor(spawned[0].x, spawned[0].y);
+    await Promise.all([
+      showBanner(w.text || '敵の増援が現れた！', 1200),
+      tween(700, p => { for (const u of spawned) u.alpha = p; }),
+    ]);
   }
 
   function openMenu() {
@@ -1001,8 +1120,11 @@
       await doAttack(u, best.f);
       state.acted = true;
     } else if (!u.leader) {
-      // 攻撃できなければ地形上の距離で最も近い敵へ寄る（リーダーは陣地を守る）
-      const dist = terrainDist(u, foes);
+      // 攻撃できなければ地形上の距離で最も近い敵へ寄る（リーダーは陣地を守る）。防衛戦では拠点を目指す
+      const goals = state.objective.type === 'defend'
+        ? [...state.goal].map(k => { const [x, y] = k.split(',').map(Number); return { x, y }; })
+        : foes;
+      const dist = terrainDist(u, goals);
       let dest = null, bestD = dist.get(key(u.x, u.y)) ?? Infinity;
       for (const s of stops) {
         const d = dist.get(key(s.x, s.y)) ?? Infinity;
@@ -1221,7 +1343,7 @@
     cam.y = clamp(ty, bounds.y0, bounds.y1);
     state.hint = '戦闘開始';
     updateHUD();
-    await showBanner(`<div class="big">BATTLE START</div><div>${def.name}</div><div>勝利条件：${def.objective}</div>`, 2400);
+    await showBanner(`<div class="big">BATTLE START</div><div>${def.name}</div><div>勝利条件：${state.objective.text}</div>`, 2400);
     nextTurn();
   }
 
