@@ -188,15 +188,23 @@
       }
     }
     for (const t of tiles) t.type = TERRAIN_CODES[t.tc] ?? autoTerrain(t);
+    // 城門は x 方向に width マス並ぶ 1 つの構造物（HP 共有）。見た目は城壁と同じ高さ top まで立ち上がり、
+    // 正面（+y 側）に床から door 段ぶんのアーチ付き扉を描く
     gates = (def.gates || []).map(g => {
-      const t = tileAt(g.x, g.y);
-      t.type = 'gate';
-      t.drawH = t.h + g.height;
-      return {
-        name: '城門', isObject: true, team: 'enemy', x: g.x, y: g.y,
-        hp: g.hp, maxHp: g.hp, def: g.def, agi: 0, facing: null,
+      const obj = {
+        name: '城門', isObject: true, team: 'enemy', x: g.x, y: g.y, tiles: [],
+        hp: g.hp, maxHp: g.hp, def: g.def, agi: 0, facing: null, damage: 0,
         offX: 0, offY: 0, alpha: 1, blink: false, dead: false,
       };
+      const n = g.width || 1;
+      for (let i = 0; i < n; i++) {
+        const t = tileAt(g.x + i, g.y);
+        t.type = 'gate';
+        t.drawH = g.top;
+        t.gate = { obj, i, n, door: (t.h + g.door) * HS };
+        obj.tiles.push(t);
+      }
+      return obj;
     });
     for (const t of tiles) t.canvas = buildTile(t);
     drawOrder = [...tiles].sort((a, b) => (a.x + a.y) - (b.x + b.y));
@@ -212,7 +220,7 @@
 
   // 1 マス分の「柱」（上面ひし形 + 左右の側面）をドット単位で描く
   function buildTile(t) {
-    const T = TERRAIN[t.type];
+    const T = TERRAIN[t.gate ? 'brick' : t.type];
     const depth = (t.drawH ?? t.h) * HS + BASE;
     const w = TW, h = TH + depth;
     const c = makeCanvas(w, h), g = c.getContext('2d');
@@ -246,7 +254,8 @@
         const py = bottom + k;
         if (py >= h) break;
         let col = pick(pal, hash(gx + px, gy + k, 2));
-        if (T.fringe && k <= fringe) col = T.fringe[px < 16 ? 0 : 1];
+        if (t.gate) col = gatePixel(t, px, k, col);
+        else if (T.fringe && k <= fringe) col = T.fringe[px < 16 ? 0 : 1];
         else if (T.sideFx) col = T.sideFx(col, px, k);
         else if (k % HS === 0) col = shade(col, -0.2);
         if (k === depth) col = shade(col, -0.45);
@@ -255,6 +264,28 @@
       }
     }
     g.putImageData(img, 0, 0);
+    return c;
+  }
+
+  // 城門の側面 1 ピクセル。u は門全体での横位置 (0..1)、z は床面からの高さ(px)
+  function gatePixel(t, px, k, col) {
+    const { obj, i, n, door } = t.gate;
+    const z = t.drawH * HS - k, base = t.h * HS;
+    if (px >= 16 || z < base) return brickFx(col, px, k);
+    const u = (i + (px + 0.5) / 16) / n;
+    const archTop = door - 12 * (1 - Math.sqrt(Math.max(0, 1 - (2 * u - 1) ** 2)));
+    if (z > archTop + 3) {
+      // アーチ上の石積みと中央の要石
+      if (Math.abs(u - 0.5) * n * 16 < 3 && z < archTop + 11) return shade([200, 188, 160], (k % 4 === 0) ? -0.2 : 0);
+      return brickFx(col, px, k);
+    }
+    if (z > archTop) return shade([160, 150, 132], (px + k) % 4 === 0 ? -0.35 : 0);
+    const gp = i * 16 + px, zz = z - base;
+    if (Math.abs(gp + 0.5 - n * 8) < 1) return [30, 20, 14];          // 左右の扉の合わせ目
+    let c = pick(TERRAIN.gate.left, hash(gp, k, 5));
+    if (zz % 12 === 4 || zz % 12 === 5) c = zz % 12 === 4 && gp % 5 === 2 ? [210, 210, 222] : [60, 60, 72];
+    else if (gp % 4 === 0) c = shade(c, -0.3);
+    if (hash(gp, k, 9) < obj.damage * 0.3) c = [34, 22, 14];            // 損傷による割れ
     return c;
   }
 
@@ -398,7 +429,7 @@
     return u;
   }
   const unitAt = (x, y) => units.find(u => !u.dead && u.x === x && u.y === y);
-  const gateAt = (x, y) => gates.find(g => !g.dead && g.x === x && g.y === y);
+  const gateAt = (x, y) => gates.find(g => !g.dead && g.tiles.some(t => t.x === x && t.y === y));
   const targetAt = (x, y) => unitAt(x, y) || gateAt(x, y);
 
   // ---------------------------------------------------------------- ルール
@@ -449,9 +480,10 @@
   const attackTileSet = (u, from) => new Set(tiles.filter(t => inRange(u, from, t)).map(t => key(t.x, t.y)));
 
   // 高低差と攻撃方向（正面・側面・背面）で命中とダメージが変わる
-  function forecast(att, tgt, from) {
-    const dh = H(from.x, from.y) - H(tgt.x, tgt.y);
-    const d = dirToward(tgt, from);
+  // pos: 攻撃するマス（複数マスの城門ではユニット位置と異なる）
+  function forecast(att, tgt, from, pos = tgt) {
+    const dh = H(from.x, from.y) - H(pos.x, pos.y);
+    const d = dirToward(pos, from);
     // 城門などの構造物には向きがない（常に正面扱い・必中）
     const rel = tgt.facing == null || d === tgt.facing ? 'front' : d === (tgt.facing + 2) % 4 ? 'back' : 'side';
     const magic = att.C.type === 'magic';
@@ -517,7 +549,7 @@
     for (const f of focus) {
       if (t.x + t.y > f.k && Math.abs(sx + ox - f.x) < 22 && y < f.y - 8 && bottom > f.y - 16) { alpha = 0.35; break; }
     }
-    const gate = t.type === 'gate' && gateAt(t.x, t.y);
+    const gate = t.gate && !t.gate.obj.dead && t.gate.obj;
     if (gate) {
       x += Math.round(gate.offX);
       if (gate.blink && Math.floor(now / 50) % 2) alpha *= 0.4;
@@ -707,7 +739,7 @@
     if (state.phase === 'target' && active) {
       const tgt = targetAt(cursor.x, cursor.y);
       if (tgt && tgt.team !== active.team && state.atkTiles?.has(key(cursor.x, cursor.y))) {
-        const f = forecast(active, tgt, active);
+        const f = forecast(active, tgt, active, cursor);
         info = `<div class="row"><span class="nm ${tgt.team}">${tgt.name}</span>へ${f.magic ? 'ファイア' : '攻撃'}</div>` +
           `<div class="row">命中率 <b>${f.hit}%</b></div>` +
           `<div class="row">ダメージ <b>${f.dmg}</b></div>` +
@@ -849,15 +881,16 @@
     setCursor(u.x, u.y);
   }
 
-  async function doAttack(a, t) {
-    const fc = forecast(a, t, a);
+  async function doAttack(a, t, pos = t) {
+    const fc = forecast(a, t, a, pos);
     const type = a.C.type;
-    a.facing = dirToward(a, t);
+    a.facing = dirToward(a, pos);
     state.hint = `${a.name}の${type === 'magic' ? 'ファイア' : type === 'bow' ? '射撃' : '攻撃'}！`;
-    setCursor(t.x, t.y);
+    setCursor(pos.x, pos.y);
     if (type === 'magic') a.mp -= MAGIC_COST;
-    const at = [t.x, t.y, t.isObject ? topH(t.x, t.y) - 3 : H(t.x, t.y)];
-    const [ax, ay] = worldPos(a.x, a.y, H(a.x, a.y)), [tx, ty] = worldPos(t.x, t.y, at[2]);
+    // 城門は扉の中ほどを狙う
+    const at = [pos.x, pos.y, t.isObject ? H(pos.x, pos.y) + 2 : H(pos.x, pos.y)];
+    const [ax, ay] = worldPos(a.x, a.y, H(a.x, a.y)), [tx, ty] = worldPos(pos.x, pos.y, at[2]);
     const len = Math.hypot(tx - ax, ty - ay) || 1, nx = (tx - ax) / len, ny = (ty - ay) / len;
 
     if (type === 'melee') {
@@ -881,11 +914,15 @@
     if (Math.random() * 100 < fc.hit) {
       const dmg = Math.max(1, Math.round(fc.dmg * (0.9 + Math.random() * 0.2)));
       t.hp = Math.max(0, t.hp - dmg);
-      popups.push({ u: t, h: topH(t.x, t.y), text: String(dmg), color: '#ffffff', t0: now });
+      popups.push({ u: pos, h: at[2], text: String(dmg), color: '#ffffff', t0: now });
+      if (t.isObject) {
+        t.damage = 1 - t.hp / t.maxHp;
+        for (const gt of t.tiles) gt.canvas = buildTile(gt);
+      }
       if (type === 'melee') effects.push({ kind: 'spark', at, t0: now, until: now + 220 });
       t.blink = true;
     } else {
-      popups.push({ u: t, h: topH(t.x, t.y), text: 'MISS', color: '#a8c8ff', t0: now });
+      popups.push({ u: pos, h: at[2], text: 'MISS', color: '#a8c8ff', t0: now });
       await tween(200, p => { t.offX = nx * 5 * Math.sin(p * Math.PI); });
       t.offX = 0;
     }
@@ -908,11 +945,14 @@
   // 城門は瓦礫のマスに置き換わり、通行できるようになる
   function destroyGate(g) {
     g.dead = true;
-    const t = tileAt(g.x, g.y), now = performance.now();
-    t.type = 'rubble';
-    delete t.drawH;
-    t.canvas = buildTile(t);
-    effects.push({ kind: 'fire', at: [g.x, g.y, t.h + 1], t0: now, until: now + 600, cols: ['#e8e0d0', '#b0a898', '#8a8078', '#5a544e'] });
+    const now = performance.now();
+    for (const t of g.tiles) {
+      t.type = 'rubble';
+      delete t.drawH;
+      delete t.gate;
+      t.canvas = buildTile(t);
+      effects.push({ kind: 'fire', at: [t.x, t.y, t.h + 1], t0: now, until: now + 700, cols: ['#e8e0d0', '#b0a898', '#8a8078', '#5a544e'] });
+    }
     state.hint = '城門を破壊した！';
     updateHUD();
   }
@@ -1009,7 +1049,7 @@
       state.phase = 'busy';
       state.atkTiles = null;
       (async () => {
-        await doAttack(u, t);
+        await doAttack(u, t, { x: c.x, y: c.y });
         state.acted = true;
         afterAction();
       })();
