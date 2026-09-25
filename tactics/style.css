@@ -155,7 +155,7 @@ body {
 
 .hidden { display: none !important; }
 
-#controls { display: flex; gap: 12px; }
+#controls { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 12px; }
 #controls button {
   font: inherit;
   font-size: 14px;

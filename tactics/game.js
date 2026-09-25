@@ -24,8 +24,8 @@
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const lerp = (a, b, t) => a + (b - a) * t;
   const key = (x, y) => x + ',' + y;
-  // 早送り中の敵の手番は演出を 4 倍速にする（state は後で定義されるので呼び出し時に参照）
-  const speed = () => state.fast && state.active?.team === 'enemy' ? 4 : 1;
+  // 早送り中は敵の手番とオートバトル中の演出を 4 倍速にする（state は後で定義されるので呼び出し時に参照）
+  const speed = () => state.fast && (state.active?.team === 'enemy' || state.auto) ? 4 : 1;
   const wait = ms => new Promise(r => setTimeout(r, ms / speed()));
   function hash(x, y, s = 0) {
     let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(s, 1442695041)) | 0;
@@ -865,12 +865,14 @@
     state.hint = u.team === 'player' ? 'コマンドを選択' : `${u.name}の行動`;
     setCursor(u.x, u.y);
     if (speed() === 1) await showBanner(`<span class="${u.team}">${u.name}</span> のターン`, 700);
-    if (u.team === 'enemy') {
-      await enemyTurn(u);
-      if (!checkEnd()) endTurn();
-    } else {
-      openMenu();
-    }
+    if (u.team === 'enemy' || state.auto) await runAi(u); else openMenu();
+  }
+
+  async function runAi(u) {
+    state.phase = 'busy';
+    hideMenu();
+    await aiTurn(u);
+    if (!checkEnd()) endTurn();
   }
 
   function endTurn() {
@@ -1105,21 +1107,52 @@
     return dist;
   }
 
-  async function enemyTurn(u) {
+  // 各マスが次の相手の手番で受けうるダメージの見積もり（移動後に攻撃が届く範囲を合計）
+  function threatMap(u) {
+    const threat = new Map();
+    for (const f of units) {
+      if (f.dead || f.team === u.team || !canAttack(f)) continue;
+      const dmg = Math.max(1, f.C.type === 'magic' ? f.atk * 1.3 - u.def * 0.4 : f.atk * 1.25 - u.def * 0.7);
+      const hit = new Set();
+      for (const s of stopTiles(f, computeReach(f))) {
+        for (const t of tiles) {
+          const k = key(t.x, t.y);
+          if (!hit.has(k) && inRange(f, s, t)) hit.add(k);
+        }
+      }
+      for (const k of hit) threat.set(k, (threat.get(k) || 0) + dmg);
+    }
+    return threat;
+  }
+
+  // 敵とオートバトル中の味方が共通で使う AI。移動済み・行動済みの状態から途中で引き継ぐこともできる
+  async function aiTurn(u) {
     await wait(300);
-    const reach = computeReach(u);
+    const reach = state.moved ? new Map([[key(u.x, u.y), { x: u.x, y: u.y, c: 0, prev: null }]]) : computeReach(u);
     const stops = stopTiles(u, reach);
     const foes = units.filter(v => !v.dead && v.team !== u.team);
+    // 味方は危険なマスを避ける（敵は恐れず突撃する）
+    const threat = u.team === 'player' ? threatMap(u) : new Map();
+    const danger = s => {
+      const t = threat.get(key(s.x, s.y)) || 0;
+      return t >= u.hp ? t * 2 : t;
+    };
+    // 攻撃対象：敵ユニットと、味方から見た城門の各マス
+    const targets = foes.map(f => ({ t: f, pos: f }));
+    if (u.team === 'player') {
+      for (const g of gates) if (!g.dead) for (const gt of g.tiles) targets.push({ t: g, pos: gt });
+    }
     let best = null;
-    if (canAttack(u)) {
+    if (!state.acted && canAttack(u)) {
       for (const s of stops) {
-        const nearest = Math.min(...foes.map(f => Math.abs(f.x - s.x) + Math.abs(f.y - s.y)));
-        for (const f of foes) {
-          if (!inRange(u, s, f)) continue;
-          const fc = forecast(u, f, s);
-          let score = fc.dmg * fc.hit / 100 + (fc.dmg >= f.hp ? 60 : 0) - s.c * 0.3;
-          if (u.C.type !== 'melee') score += nearest * 2;
-          if (!best || score > best.score) best = { s, f, score };
+        const nearest = foes.length ? Math.min(...foes.map(f => Math.abs(f.x - s.x) + Math.abs(f.y - s.y))) : 0;
+        for (const { t, pos } of targets) {
+          if (!inRange(u, s, pos)) continue;
+          const fc = forecast(u, t, s, pos);
+          let score = fc.dmg * fc.hit / 100 + (fc.dmg >= t.hp && !t.isObject ? 60 : 0) - s.c * 0.3 - danger(s) * 0.4;
+          if (t.isObject) score *= 0.6;                  // 城門より兵を優先
+          if (u.C.type !== 'melee') score += nearest * 2; // 射手は距離を取る
+          if (!best || score > best.score) best = { s, t, pos, score };
         }
       }
     }
@@ -1129,20 +1162,26 @@
         state.moved = true;
       }
       await wait(200);
-      await doAttack(u, best.f);
+      await doAttack(u, best.t, best.pos);
       state.acted = true;
-    } else if (!u.leader) {
-      // 攻撃できなければ地形上の距離で最も近い敵へ寄る（リーダーは陣地を守る）。防衛戦では拠点を目指す
-      const goals = state.objective.type === 'defend'
+    } else if (!u.leader && !state.moved) {
+      // 攻撃できなければ地形上の距離で最も近い相手へ寄る（敵リーダーは陣地を守る）。
+      // 防衛戦の敵は拠点を、味方は敵か城門を目指す
+      const goals = u.team === 'enemy' && state.objective.type === 'defend'
         ? [...state.goal].map(k => { const [x, y] = k.split(',').map(Number); return { x, y }; })
-        : foes;
+        : targets.map(({ pos }) => pos);
       const dist = terrainDist(u, goals);
-      let dest = null, bestD = dist.get(key(u.x, u.y)) ?? Infinity;
+      // 倒されうるマスは強く避け、それ以外の危険は少しだけ嫌う（慎重すぎると陣地戦で膠着する）
+      const cost = s => {
+        const t = threat.get(key(s.x, s.y)) || 0;
+        return (dist.get(key(s.x, s.y)) ?? Infinity) + (t >= u.hp ? 12 : t / u.maxHp * 2);
+      };
+      let dest = null, bestD = cost(u);
       for (const s of stops) {
-        const d = dist.get(key(s.x, s.y)) ?? Infinity;
+        const d = cost(s);
         if (d < bestD) { bestD = d; dest = s; }
       }
-      if (dest) {
+      if (dest && (dest.x !== u.x || dest.y !== u.y)) {
         await moveAlong(u, pathTo(reach, dest));
         state.moved = true;
       }
@@ -1237,6 +1276,7 @@
     else if (['z', 'Z', 'Enter', ' '].includes(e.key)) { e.preventDefault(); confirm(); }
     else if (['x', 'X', 'Escape', 'Backspace'].includes(e.key)) { e.preventDefault(); cancel(); }
     else if (e.key === 'f' || e.key === 'F') toggleFast();
+    else if (e.key === 'a' || e.key === 'A') toggleAuto();
   });
 
   // 画面上の点から、手前に描かれているタイル（またはユニット）を探す
@@ -1317,11 +1357,23 @@
   function toggleFast() {
     state.fast = !state.fast;
     try { localStorage.setItem('tactics.fast', state.fast ? '1' : ''); } catch {}
-    $('btnFast').textContent = `敵早送り ${state.fast ? 'ON' : 'OFF'}`;
+    $('btnFast').textContent = `早送り ${state.fast ? 'ON' : 'OFF'}`;
     $('btnFast').classList.toggle('on', state.fast);
   }
   try { if (localStorage.getItem('tactics.fast')) toggleFast(); } catch {}
   $('btnFast').addEventListener('click', toggleFast);
+
+  // オートバトル：味方の手番も AI が行う。操作中に ON にすると、その手番の残りから AI が引き継ぐ
+  function toggleAuto() {
+    state.auto = !state.auto;
+    $('btnAuto').textContent = `オート ${state.auto ? 'ON' : 'OFF'}`;
+    $('btnAuto').classList.toggle('on', state.auto);
+    const u = state.active;
+    if (state.auto && u?.team === 'player' && ['menu', 'look', 'move', 'target', 'facing'].includes(state.phase)) {
+      if (state.phase === 'facing') endTurn(); else runAi(u);
+    }
+  }
+  $('btnAuto').addEventListener('click', toggleAuto);
   $('btnOk').addEventListener('click', confirm);
   $('btnCancel').addEventListener('click', cancel);
 
