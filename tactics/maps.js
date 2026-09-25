@@ -4,7 +4,7 @@
 // height  : 1 文字 = 1 マスの高さ（36 進: 0-9, a=10, b=11 … z=35）。行が y、列が x。
 // terrain : 1 文字 = 1 マスの地形。'.' は高さと周囲から自動（草原・荒れ地・岩場・水辺の砂地）。
 //           g 草原 / d 荒れ地 / r 岩場 / s 砂地 / w 川・堀（通行不可）
-//           f 石畳 / W 城壁 / b 木橋 / x 瓦礫 / G 城門の床（gates と併用）
+//           f 石畳 / W 城壁・石壁 / R 絨毯 / b 木橋 / x 瓦礫 / G 城門の床（gates と併用）
 // gates   : 壊せる城門。{ x, y, width（x 方向のマス数）, top（門楼の上端の高さ）, door（床から扉の上端までの段数）, hp, def }
 // objective: { type, text, rounds?, goal? }
 //           type = leader（leader: true の敵を倒す）/ annihilate（全滅）/ survive（rounds ラウンド耐える）
@@ -210,6 +210,64 @@ window.TACTICS_MAPS = [
           { name: 'ゴブリン', cls: 'goblin', team: 'enemy', x: 19, y: 0, lv: 4, hair: '#303030', facing: 1 },
         ],
       },
+    ],
+  },
+  {
+    id: 'hall',
+    name: '謁見の間',
+    desc: '城の奥、玉座の間での室内戦。壁と柱で視界と進路が遮られる。側室の弓兵に注意しつつ玉座の敵将を討て。',
+    objective: { type: 'leader', text: '玉座の敵将 ガーランドの撃破' },
+    // 奥の壁（y=0 / x=0）と y=9 の仕切り壁。中央の扉から玉座の間へ、左右の扉から側室へ
+    height: [
+      '7777777777777777',
+      '7111161333316222',
+      '7111161333316222',
+      '7111161222216222',
+      '7111161111116222',
+      '7111111111112222',
+      '7111161111116222',
+      '7111161111116222',
+      '7111161111116222',
+      '7551555511555525',
+      '7111111111111111',
+      '7161111111111611',
+      '7111111111111111',
+      '7111111111111111',
+      '7161111111111611',
+      '7111111111111111',
+    ],
+    terrain: [
+      'WWWWWWWWWWWWWWWW',
+      'WffffWfRRRRfWfff',
+      'WffffWfRRRRfWfff',
+      'WffffWfRRRRfWfff',
+      'WffffWffRRffWfff',
+      'WfffffffRRffffff',
+      'WffffWffRRffWfff',
+      'WffffWffRRffWfff',
+      'WffffWffRRffWfff',
+      'WWWfWWWWRRWWWWfW',
+      'WfffffffRRffffff',
+      'WfWfffffRRfffWff',
+      'WfffffffRRffffff',
+      'WfffffffRRffffff',
+      'WfWfffffRRfffWff',
+      'WfffffffRRffffff',
+    ],
+    units: [
+      { name: 'レオン', cls: 'knight', team: 'player', x: 8, y: 14, lv: 5, hair: '#c89040', facing: 3 },
+      { name: 'カイン', cls: 'knight', team: 'player', x: 9, y: 14, lv: 5, hair: '#303848', facing: 3 },
+      { name: 'ガルド', cls: 'soldier', team: 'player', x: 7, y: 14, lv: 5, hair: '#503828', facing: 3 },
+      { name: 'セリカ', cls: 'archer', team: 'player', x: 8, y: 15, lv: 4, hair: '#e8d070', facing: 3 },
+      { name: 'ノア', cls: 'archer', team: 'player', x: 10, y: 15, lv: 4, hair: '#8a5a3a', facing: 3 },
+      { name: 'ミラ', cls: 'wizard', team: 'player', x: 9, y: 15, lv: 4, hair: '#b05a30', facing: 3 },
+      { name: 'ガーランド', cls: 'knight', team: 'enemy', x: 8, y: 2, lv: 7, hair: '#c0c0c8', facing: 1, leader: true },
+      { name: 'ロイ', cls: 'soldier', team: 'enemy', x: 7, y: 6, lv: 4, hair: '#6a4020', facing: 1 },
+      { name: 'ダン', cls: 'soldier', team: 'enemy', x: 10, y: 6, lv: 4, hair: '#403020', facing: 1 },
+      { name: 'ザック', cls: 'soldier', team: 'enemy', x: 3, y: 11, lv: 4, hair: '#302018', facing: 0 },
+      { name: 'ヘルガ', cls: 'archer', team: 'enemy', x: 2, y: 3, lv: 4, hair: '#d0a060', facing: 0 },
+      { name: 'ベイン', cls: 'archer', team: 'enemy', x: 14, y: 3, lv: 4, hair: '#404040', facing: 1 },
+      { name: 'モルド', cls: 'wizard', team: 'enemy', x: 13, y: 7, lv: 4, hair: '#a0a0a8', facing: 1 },
     ],
   },
 ];

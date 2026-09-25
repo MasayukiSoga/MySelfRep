@@ -24,7 +24,9 @@
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const lerp = (a, b, t) => a + (b - a) * t;
   const key = (x, y) => x + ',' + y;
-  const wait = ms => new Promise(r => setTimeout(r, ms));
+  // 早送り中の敵の手番は演出を 4 倍速にする（state は後で定義されるので呼び出し時に参照）
+  const speed = () => state.fast && state.active?.team === 'enemy' ? 4 : 1;
+  const wait = ms => new Promise(r => setTimeout(r, ms / speed()));
   function hash(x, y, s = 0) {
     let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(s, 1442695041)) | 0;
     h = Math.imul(h ^ (h >>> 13), 1274126177);
@@ -39,6 +41,7 @@
     return c;
   }
   function tween(ms, fn) {
+    ms /= speed();
     return new Promise(res => {
       const t0 = performance.now();
       const step = now => {
@@ -124,6 +127,14 @@
       left: ['#6a4424', '#603c20'], right: ['#4c3018', '#442a14'],
       topFx: (c, ux) => near(ux * 4, 0.07) ? shade(c, -0.35) : c,
     },
+    carpet: {
+      name: '絨毯',
+      top: ['#a83034', '#9c2a2e', '#b4383c'],
+      left: ['#8a8680', '#807c76', '#94908a'], right: ['#66625e', '#5e5a56', '#6e6a66'],
+      // 金糸の菱形模様
+      topFx: (c, ux, uy) => near(ux * 2, 0.07) && near(uy * 2, 0.3) || near(uy * 2, 0.07) && near(ux * 2, 0.3) ? [214, 170, 70] : c,
+      sideFx: (c, px, k) => brickFx(c, px, k),
+    },
     rubble: {
       name: '瓦礫',
       top: ['#8a8680', '#6e6a64', '#a09a90', '#7a6a58'],
@@ -151,7 +162,7 @@
   // マップデータの地形文字。'.' は高さと周囲から自動で決める
   const TERRAIN_CODES = {
     g: 'grass', d: 'dirt', r: 'stone', s: 'sand', w: 'water',
-    f: 'floor', W: 'brick', b: 'bridge', x: 'rubble', G: 'floor',
+    f: 'floor', W: 'brick', b: 'bridge', x: 'rubble', G: 'floor', R: 'carpet',
   };
   for (const t of Object.values(TERRAIN)) {
     for (const k of ['top', 'left', 'right', 'fringe']) if (t[k]) t[k] = t[k].map(rgb);
@@ -740,8 +751,9 @@
     ctx.drawImage(BG, 0, 0);
     if (!MAP) return;
     const [tx, ty] = cameraTarget();
-    cam.x += (clamp(tx, bounds.x0, bounds.x1) - cam.x) * 0.14;
-    cam.y += (clamp(ty, bounds.y0, bounds.y1) - cam.y) * 0.14;
+    const follow = speed() > 1 ? 0.4 : 0.14;
+    cam.x += (clamp(tx, bounds.x0, bounds.x1) - cam.x) * follow;
+    cam.y += (clamp(ty, bounds.y0, bounds.y1) - cam.y) * follow;
     const ox = Math.round(VW / 2 - cam.x), oy = Math.round(VH / 2 - 4 - cam.y);
     state.ox = ox; state.oy = oy;
 
@@ -852,7 +864,7 @@
     u.mp = Math.min(u.maxMp, u.mp + 2);
     state.hint = u.team === 'player' ? 'コマンドを選択' : `${u.name}の行動`;
     setCursor(u.x, u.y);
-    await showBanner(`<span class="${u.team}">${u.name}</span> のターン`, 700);
+    if (speed() === 1) await showBanner(`<span class="${u.team}">${u.name}</span> のターン`, 700);
     if (u.team === 'enemy') {
       await enemyTurn(u);
       if (!checkEnd()) endTurn();
@@ -1224,6 +1236,7 @@
     if (KEY_DIRS[e.key]) { e.preventDefault(); onDir(...KEY_DIRS[e.key]); }
     else if (['z', 'Z', 'Enter', ' '].includes(e.key)) { e.preventDefault(); confirm(); }
     else if (['x', 'X', 'Escape', 'Backspace'].includes(e.key)) { e.preventDefault(); cancel(); }
+    else if (e.key === 'f' || e.key === 'F') toggleFast();
   });
 
   // 画面上の点から、手前に描かれているタイル（またはユニット）を探す
@@ -1301,6 +1314,14 @@
     state.menuIndex = +li.dataset.i;
     renderMenu();
   });
+  function toggleFast() {
+    state.fast = !state.fast;
+    try { localStorage.setItem('tactics.fast', state.fast ? '1' : ''); } catch {}
+    $('btnFast').textContent = `敵早送り ${state.fast ? 'ON' : 'OFF'}`;
+    $('btnFast').classList.toggle('on', state.fast);
+  }
+  try { if (localStorage.getItem('tactics.fast')) toggleFast(); } catch {}
+  $('btnFast').addEventListener('click', toggleFast);
   $('btnOk').addEventListener('click', confirm);
   $('btnCancel').addEventListener('click', cancel);
 
