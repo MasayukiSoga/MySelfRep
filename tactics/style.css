@@ -153,6 +153,11 @@ body {
 #title li.sel::before { content: '▶'; position: absolute; left: 0; color: #ffe070; font-size: 7px; }
 #title .desc { margin-top: 4px; padding-top: 3px; border-top: 1px solid #6a78c8; color: #d8ddf8; min-height: 30px; }
 
+/* マップエディタ内のプレビュー表示 */
+body.preview { padding: 0; justify-content: flex-start; }
+body.preview #controls, body.preview #help { display: none; }
+#game.preview #turnWin, #game.preview #infoWin, #game.preview #menu { display: none; }
+
 .hidden { display: none !important; }
 
 #controls { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 12px; }
@@ -170,3 +175,4 @@ body {
 #controls button.on { background: linear-gradient(180deg, #d0a030, #6a4a10); }
 
 #help { font-size: 12px; color: #8088a8; text-align: center; }
+#help a { color: #a8b8ff; }

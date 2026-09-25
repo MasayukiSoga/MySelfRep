@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tactics Map Editor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap">
+<link rel="stylesheet" href="editor.css">
+</head>
+<body>
+<header>
+  <h1>マップエディタ</h1>
+  <div class="group">
+    <select id="template"></select>
+    <button id="btnLoadTpl" type="button">読み込み</button>
+  </div>
+  <div class="group">
+    <button id="btnUndo" type="button" title="Ctrl+Z">元に戻す</button>
+    <button id="btnRedo" type="button" title="Ctrl+Y">やり直し</button>
+  </div>
+  <div class="group">
+    <button id="btnPlay" type="button" class="primary">テストプレイ</button>
+    <button id="btnExport" type="button">書き出し / 読み込み</button>
+  </div>
+</header>
+
+<main>
+  <aside id="tools">
+    <section>
+      <h2>基本情報</h2>
+      <label>ID <input id="mId" type="text"></label>
+      <label>名前 <input id="mName" type="text"></label>
+      <label>説明 <textarea id="mDesc" rows="2"></textarea></label>
+      <div class="row">
+        <label>横(x) <input id="mW" type="number" min="4" max="40"></label>
+        <label>縦(y) <input id="mH" type="number" min="4" max="40"></label>
+        <button id="btnResize" type="button">サイズ変更</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>勝利条件</h2>
+      <label>種類
+        <select id="oType">
+          <option value="leader">敵将撃破</option>
+          <option value="annihilate">敵全滅</option>
+          <option value="survive">N ラウンド耐える</option>
+          <option value="defend">拠点防衛</option>
+        </select>
+      </label>
+      <label>表示文 <input id="oText" type="text"></label>
+      <label id="oRoundsLabel">ラウンド数 <input id="oRounds" type="number" min="1" max="30"></label>
+    </section>
+
+    <section>
+      <h2>ツール</h2>
+      <div id="toolTabs" class="tabs">
+        <button type="button" data-tool="height">高さ</button>
+        <button type="button" data-tool="terrain">地形</button>
+        <button type="button" data-tool="unit">ユニット</button>
+        <button type="button" data-tool="gate">城門</button>
+        <button type="button" data-tool="goal">防衛マス</button>
+      </div>
+
+      <div class="panel" data-panel="height">
+        <div class="row">
+          <label><input type="radio" name="hMode" value="set" checked> 指定値</label>
+          <input id="hValue" type="number" min="0" max="35" value="1">
+        </div>
+        <div class="row">
+          <label><input type="radio" name="hMode" value="up"> +1</label>
+          <label><input type="radio" name="hMode" value="down"> −1</label>
+        </div>
+        <label>ブラシ
+          <select id="brush"><option value="1">1×1</option><option value="3">3×3</option><option value="5">5×5</option></select>
+        </label>
+        <p class="note">右クリック: その高さを拾う（スポイト）。数字キーで指定値を変更。</p>
+      </div>
+
+      <div class="panel" data-panel="terrain">
+        <div id="swatches"></div>
+        <label>ブラシ
+          <select id="brushT"><option value="1">1×1</option><option value="3">3×3</option><option value="5">5×5</option></select>
+        </label>
+        <p class="note">右クリック: 自動に戻す。「自動」は高さと水辺から草原・荒れ地・岩場・砂地を決める。</p>
+      </div>
+
+      <div class="panel" data-panel="unit">
+        <label>配置先 <select id="uGroup"></select></label>
+        <div class="row">
+          <label>ラウンド <input id="wRound" type="number" min="2" max="30" value="3"></label>
+          <button id="btnAddWave" type="button">増援を追加</button>
+        </div>
+        <label id="wTextLabel">増援の表示文 <input id="wText" type="text"></label>
+        <button id="btnDelWave" type="button">この増援を削除</button>
+        <hr>
+        <div class="row">
+          <label>陣営 <select id="uTeam"><option value="player">味方</option><option value="enemy">敵</option></select></label>
+          <label>Lv <input id="uLv" type="number" min="1" max="50" value="4"></label>
+        </div>
+        <label>クラス <select id="uCls"></select></label>
+        <label>名前 <input id="uName" type="text" placeholder="空欄ならクラス名"></label>
+        <div class="row">
+          <label>向き
+            <select id="uFacing">
+              <option value="0">右下 (+x)</option><option value="1">左下 (+y)</option>
+              <option value="2">左上 (−x)</option><option value="3">右上 (−y)</option>
+            </select>
+          </label>
+          <label><input id="uLeader" type="checkbox"> 敵将</label>
+        </div>
+        <p class="note">左クリック: 配置（同じマスは置き換え）。右クリック: 削除。</p>
+      </div>
+
+      <div class="panel" data-panel="gate">
+        <div class="row">
+          <label>幅 <input id="gW" type="number" min="1" max="8" value="4"></label>
+          <label>門楼の高さ <input id="gTop" type="number" min="1" max="35" value="8"></label>
+        </div>
+        <div class="row">
+          <label>扉の高さ <input id="gDoor" type="number" min="1" max="30" value="5"></label>
+          <label>HP <input id="gHp" type="number" min="1" max="999" value="240"></label>
+          <label>防御 <input id="gDef" type="number" min="0" max="99" value="16"></label>
+        </div>
+        <p class="note">左クリック: そのマスから +x 方向へ幅ぶんの城門を置く（扉は +y 側に向く）。右クリック: 削除。</p>
+      </div>
+
+      <div class="panel" data-panel="goal">
+        <p class="note">勝利条件「拠点防衛」で敵に入られてはいけないマス。左クリック: 追加、右クリック: 削除。</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>チェック</h2>
+      <ul id="warnings"></ul>
+    </section>
+  </aside>
+
+  <section id="gridWrap">
+    <div class="row gridbar">
+      <label>拡大 <input id="zoom" type="range" min="1" max="3" step="0.25" value="1"></label>
+      <span class="note">左クリック/ドラッグ: 塗る　右クリック: 各ツールの補助操作　Ctrl+Z / Ctrl+Y: 元に戻す / やり直し</span>
+    </div>
+    <canvas id="grid"></canvas>
+    <p class="note" id="status">&nbsp;</p>
+  </section>
+
+  <section id="previewWrap">
+    <iframe id="preview" src="index.html?preview=1" title="プレビュー"></iframe>
+    <p class="note">プレビュー（実際のゲーム画面）。クリックしたマスにも現在のツールを適用します。矢印キーでカーソル移動。</p>
+  </section>
+</main>
+
+<dialog id="exportDlg">
+  <h2>書き出し / 読み込み</h2>
+  <p class="note">この内容を <code>maps.js</code> の <code>window.TACTICS_MAPS</code> 配列に追加すると、正式なマップになります。<br>
+    他のマップの定義を貼り付けて「読み込み」すると、エディタに取り込めます。</p>
+  <textarea id="exportText" rows="20" spellcheck="false"></textarea>
+  <div class="row end">
+    <button id="btnCopy" type="button">コピー</button>
+    <button id="btnImport" type="button">読み込み</button>
+    <button id="btnCloseDlg" type="button">閉じる</button>
+  </div>
+</dialog>
+
+<script src="maps.js"></script>
+<script src="editor.js"></script>
+</body>
+</html>

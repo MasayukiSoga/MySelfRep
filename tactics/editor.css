@@ -1,0 +1,80 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0b0f22;
+  --panel: #151c3c;
+  --panel2: #1d2758;
+  --line: #3a4a9a;
+  --text: #dfe4ff;
+  --muted: #8c96c8;
+  --accent: #ffe070;
+}
+
+html, body { background: var(--bg); color: var(--text); font-family: 'DotGothic16', 'MS Gothic', monospace; font-size: 13px; }
+body { min-height: 100vh; display: flex; flex-direction: column; }
+
+header {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px;
+  padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--line);
+}
+header h1 { font-size: 16px; font-weight: normal; color: var(--accent); margin-right: 8px; }
+.group { display: flex; gap: 6px; align-items: center; }
+
+button, select, input, textarea {
+  font: inherit; color: var(--text); background: var(--panel2);
+  border: 1px solid var(--line); border-radius: 3px; padding: 3px 6px;
+}
+button { cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button.primary { background: linear-gradient(180deg, #3c56c8, #141d5c); border-color: #e8ecff; }
+input[type=number] { width: 56px; }
+input[type=checkbox], input[type=radio] { width: auto; }
+
+main {
+  flex: 1; display: grid; gap: 12px; padding: 12px;
+  grid-template-columns: 290px minmax(0, 1fr) minmax(300px, 520px);
+  align-items: start;
+}
+@media (max-width: 1100px) { main { grid-template-columns: 290px minmax(0, 1fr); } #previewWrap { grid-column: 1 / -1; } }
+@media (max-width: 700px) { main { grid-template-columns: minmax(0, 1fr); } }
+
+#tools { display: flex; flex-direction: column; gap: 10px; }
+#tools section { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+#tools h2 { font-size: 13px; font-weight: normal; color: var(--accent); }
+#tools label { display: flex; flex-direction: column; gap: 2px; color: var(--muted); }
+#tools label input[type=text], #tools label textarea, #tools label select { color: var(--text); width: 100%; }
+.row { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: flex-end; }
+.row label { flex-direction: row !important; align-items: center; gap: 4px !important; }
+.row.end { justify-content: flex-end; }
+.note { color: var(--muted); font-size: 12px; line-height: 1.5; }
+hr { border: none; border-top: 1px solid var(--line); }
+
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; }
+.tabs button.on { background: #d0a030; color: #1a1200; border-color: #ffe9a0; }
+.panel { display: none; flex-direction: column; gap: 6px; }
+.panel.on { display: flex; }
+
+#swatches { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; }
+#swatches button { display: flex; align-items: center; gap: 6px; text-align: left; }
+#swatches button.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+#swatches i { width: 14px; height: 14px; border: 1px solid #000; display: inline-block; flex: none; }
+
+#warnings { list-style: none; display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
+#warnings li.ok { color: #a8f0b8; }
+#warnings li.ng { color: #ffb0a8; }
+
+#gridWrap { background: #070a18; border: 1px solid var(--line); border-radius: 4px; padding: 8px; overflow: auto; }
+#gridWrap .gridbar { margin-bottom: 6px; align-items: center; }
+#gridWrap .gridbar label { color: var(--muted); display: flex; gap: 6px; align-items: center; }
+#grid { display: block; margin: 0 auto; cursor: crosshair; touch-action: none; }
+
+#previewWrap { display: flex; flex-direction: column; gap: 6px; position: sticky; top: 12px; }
+#preview { width: 100%; aspect-ratio: 256 / 224; border: 1px solid var(--line); border-radius: 4px; background: #000; }
+
+dialog {
+  margin: auto; width: min(760px, 94vw); padding: 14px;
+  background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 6px;
+}
+dialog::backdrop { background: rgba(0, 0, 0, .6); }
+dialog h2 { font-size: 14px; font-weight: normal; color: var(--accent); margin-bottom: 6px; }
+dialog textarea { width: 100%; margin: 8px 0; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }

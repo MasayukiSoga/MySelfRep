@@ -18,7 +18,15 @@
   const $game = $('game'), $wrap = $('wrap');
   const $turn = $('turnWin'), $terrain = $('terrainWin'), $unit = $('unitWin'), $info = $('infoWin');
   const $menu = $('menu'), $banner = $('banner'), $title = $('title');
-  const MAPS = window.TACTICS_MAPS;
+  const PARAMS = new URLSearchParams(location.search);
+  // ?preview=1 はマップエディタに埋め込むプレビュー表示（戦闘は行わない）
+  const PREVIEW = PARAMS.has('preview');
+  const MAPS = [...window.TACTICS_MAPS];
+  // マップエディタで編集中のマップ（ブラウザに自動保存される）も選べるようにする
+  try {
+    const edited = JSON.parse(localStorage.getItem('tactics.editorMap'));
+    if (edited) MAPS.push({ ...edited, id: 'custom', name: `${edited.name || '無題'}（エディタ）` });
+  } catch {}
 
   // ---------------------------------------------------------------- ユーティリティ
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -740,7 +748,7 @@
     }
   }
 
-  const cursorVisible = () => ['menu', 'look', 'move', 'target'].includes(state.phase);
+  const cursorVisible = () => ['menu', 'look', 'move', 'target', 'preview'].includes(state.phase);
 
   function cameraTarget() {
     const f = state.camUnit;
@@ -807,6 +815,7 @@
     $terrain.innerHTML = `<div class="ttl">${TERRAIN[t.type].name}</div><div>高さ <b>${t.h}</b></div>`;
 
     const u = targetAt(cursor.x, cursor.y) || active;
+    $unit.classList.toggle('hidden', !u);
     if (u?.isObject) {
       $unit.className = 'win enemy';
       $unit.innerHTML =
@@ -1264,7 +1273,7 @@
       renderMenu();
     } else if (p === 'facing') {
       state.active.facing = DIRS.findIndex(d => d[0] === dx && d[1] === dy);
-    } else if (p === 'look' || p === 'move' || p === 'target') {
+    } else if (p === 'look' || p === 'move' || p === 'target' || p === 'preview') {
       setCursor(state.cursor.x + dx, state.cursor.y + dy);
     }
   }
@@ -1312,7 +1321,7 @@
       if (t.x !== u.x || t.y !== u.y) u.facing = dirToward(u, t);
       return same;
     }
-    if (p === 'look' || p === 'move' || p === 'target') {
+    if (p === 'look' || p === 'move' || p === 'target' || p === 'preview') {
       if (!same) setCursor(t.x, t.y);
       return same;
     }
@@ -1331,6 +1340,11 @@
     if (state.phase === 'over') { confirm(); return; }
     const t = pickTile(e.clientX, e.clientY);
     if (!t) return;
+    if (state.phase === 'preview') {
+      setCursor(t.x, t.y);
+      parent.postMessage({ type: 'tactics-pick', x: t.x, y: t.y }, '*');
+      return;
+    }
     if (state.phase === 'facing') {
       const same = state.cursor.x === t.x && state.cursor.y === t.y;
       pointAt(t);
@@ -1379,7 +1393,7 @@
 
   // ---------------------------------------------------------------- 画面サイズ
   function fit() {
-    const s = Math.min((innerWidth - 16) / VW, (innerHeight - 100) / VH);
+    const s = PREVIEW ? Math.min(innerWidth / VW, innerHeight / VH) : Math.min((innerWidth - 16) / VW, (innerHeight - 100) / VH);
     const sc = s >= 2 ? Math.floor(s) : Math.max(0.5, s);
     $game.style.transform = `scale(${sc})`;
     $wrap.style.width = VW * sc + 'px';
@@ -1408,7 +1422,7 @@
     $game.classList.remove('title');
     $title.classList.add('hidden');
     loadMap(def);
-    const first = units.find(u => u.team === 'player');
+    const first = units.find(u => u.team === 'player') || { x: MW >> 1, y: MH >> 1 };
     state.phase = 'busy';
     state.cursor = { x: first.x, y: first.y };
     const [tx, ty] = cameraTarget();
@@ -1428,6 +1442,33 @@
   });
 
   requestAnimationFrame(frame);
-  const requested = MAPS.find(m => m.id === new URLSearchParams(location.search).get('map'));
-  if (requested) startBattle(requested); else showTitle();
+  function startPreview() {
+    document.body.classList.add('preview');
+    $game.classList.add('preview');
+    fit();
+    state.phase = 'preview';
+    addEventListener('message', e => {
+      if (e.source !== parent || e.data?.type !== 'tactics-map') return;
+      const first = !MAP;
+      try {
+        loadMap(e.data.map);
+      } catch (err) {
+        console.warn('preview: invalid map', err);
+        return;
+      }
+      if (first) state.cursor = { x: MW >> 1, y: MH >> 1 };
+      setCursor(state.cursor.x, state.cursor.y);
+      if (first) {
+        const [tx, ty] = cameraTarget();
+        cam.x = clamp(tx, bounds.x0, bounds.x1);
+        cam.y = clamp(ty, bounds.y0, bounds.y1);
+      }
+    });
+    parent.postMessage({ type: 'tactics-preview-ready' }, '*');
+  }
+
+  const requested = MAPS.find(m => m.id === PARAMS.get('map'));
+  if (PREVIEW) startPreview();
+  else if (requested) startBattle(requested);
+  else showTitle();
 })();
