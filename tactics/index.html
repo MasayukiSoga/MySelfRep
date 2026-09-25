@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Tactics Battle</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="wrap">
+  <div id="game">
+    <canvas id="screen" width="256" height="224"></canvas>
+    <div id="turnWin" class="win"></div>
+    <div id="terrainWin" class="win"></div>
+    <div id="unitWin" class="win"></div>
+    <div id="infoWin" class="win"></div>
+    <ul id="menu" class="win hidden"></ul>
+    <div id="banner" class="hidden"></div>
+  </div>
+</div>
+<div id="controls">
+  <button id="btnOk" type="button">決定</button>
+  <button id="btnCancel" type="button">キャンセル</button>
+</div>
+<p id="help">矢印キー: カーソル / Z・Enter: 決定 / X・Esc: キャンセル　—　マウス・タップ操作にも対応</p>
+<script src="game.js"></script>
+</body>
+</html>

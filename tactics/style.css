@@ -1,0 +1,156 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: #000;
+  color: #c8cce0;
+  font-family: 'DotGothic16', 'MS Gothic', 'Osaka-Mono', monospace;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 8px;
+  overflow: hidden;
+}
+
+#wrap {
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 0 0 2px #22263a, 0 0 32px #000;
+}
+
+/* SFC の 256x224 解像度で組み、transform で拡大する */
+#game {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 256px;
+  height: 224px;
+  transform-origin: 0 0;
+  font-size: 8px;
+  line-height: 10px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#screen {
+  display: block;
+  width: 256px;
+  height: 224px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+/* SFC 風の青いウィンドウ */
+.win {
+  position: absolute;
+  color: #fff;
+  background: linear-gradient(180deg, #3c56c8 0%, #1f2e86 55%, #141d5c 100%);
+  border: 1px solid #e8ecff;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px #05081c;
+  padding: 2px 4px;
+  text-shadow: 1px 1px 0 #000822;
+  pointer-events: none;
+}
+
+.win.enemy {
+  background: linear-gradient(180deg, #b8474a 0%, #7a2230 55%, #501420 100%);
+}
+
+#turnWin { left: 3px; top: 3px; width: 64px; }
+#terrainWin { right: 3px; top: 3px; width: 54px; }
+#unitWin { left: 3px; bottom: 3px; width: 138px; height: 46px; }
+#infoWin { right: 3px; bottom: 3px; width: 106px; height: 46px; }
+
+#turnWin .ttl, #terrainWin .ttl { color: #ffe070; }
+.ord { white-space: nowrap; overflow: hidden; }
+.ord.player, .nm.player { color: #a8ccff; }
+.ord.enemy, .nm.enemy { color: #ffb0a8; }
+
+.row { display: flex; align-items: center; gap: 3px; white-space: nowrap; height: 10px; }
+.row .cl { color: #d0d8ff; }
+.row .lv { margin-left: auto; color: #ffe070; }
+.row .lb { width: 11px; color: #ffe070; }
+.row .num { width: 34px; text-align: right; }
+.row b { color: #ffe070; font-weight: normal; }
+
+.bar {
+  flex: 1;
+  height: 5px;
+  background: #0a0f30;
+  border: 1px solid #000;
+  position: relative;
+}
+.bar i {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  background: linear-gradient(#b6f890, #3ca040);
+}
+.bar.low i { background: linear-gradient(#ffd070, #d06020); }
+.bar.mp i { background: linear-gradient(#a8d0ff, #3a6ae0); }
+
+.hint { color: #e8ecff; }
+.rel { color: #ffd060; }
+
+#menu {
+  right: 3px;
+  bottom: 53px;
+  width: 58px;
+  list-style: none;
+  padding: 3px 4px 3px 13px;
+  pointer-events: auto;
+}
+#menu li { position: relative; height: 12px; line-height: 12px; cursor: pointer; }
+#menu li.dis { color: #7c84b0; }
+#menu li.sel::before {
+  content: '▶';
+  position: absolute;
+  left: -10px;
+  color: #ffe070;
+  font-size: 7px;
+}
+
+#banner {
+  position: absolute;
+  left: 0; right: 0; top: 78px;
+  text-align: center;
+  pointer-events: none;
+}
+#banner .box {
+  display: inline-block;
+  padding: 4px 12px;
+  background: linear-gradient(180deg, rgba(40, 60, 170, .92), rgba(14, 20, 70, .92));
+  border: 1px solid #e8ecff;
+  box-shadow: 0 0 0 1px #05081c;
+  color: #fff;
+  text-shadow: 1px 1px 0 #000822;
+}
+#banner .big { font-size: 16px; line-height: 20px; color: #ffe070; letter-spacing: 1px; }
+#banner .big.lose { color: #ff8a80; }
+#banner .small { color: #b8c0e8; margin-top: 2px; }
+#banner .player { color: #a8ccff; }
+#banner .enemy { color: #ffb0a8; }
+
+.hidden { display: none !important; }
+
+#controls { display: flex; gap: 12px; }
+#controls button {
+  font: inherit;
+  font-size: 14px;
+  color: #fff;
+  padding: 6px 18px;
+  background: linear-gradient(180deg, #3c56c8, #141d5c);
+  border: 1px solid #e8ecff;
+  border-radius: 3px;
+  cursor: pointer;
+}
+#controls button:active { filter: brightness(1.3); }
+
+#help { font-size: 12px; color: #8088a8; text-align: center; }
