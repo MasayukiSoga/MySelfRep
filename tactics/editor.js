@@ -27,9 +27,13 @@
   const CLASSES = [
     ['knight', 'ナイト', '騎'], ['soldier', 'ソルジャー', '兵'], ['archer', 'アーチャー', '弓'], ['wizard', 'ウィザード', '魔'],
     ['goblin', 'ゴブリン', 'ゴ'], ['wolf', 'ウルフ', '狼'], ['orc', 'オーク', 'オ'], ['golem', 'ゴーレム', '巨'],
+    ['fairy', '妖精（低空）', '妖'], ['pegasus', 'ペガサス（中空）', '天'], ['pegasusKnight', 'ペガサスナイト（中空）', '天'],
+    ['griffon', 'グリフォン（高空）', '鷲'], ['griffonRider', 'グリフォンライダー（高空）', '鷲'], ['garuda', 'ガルーダ（最高空）', '鳥'],
   ];
   const CLS = Object.fromEntries(CLASSES.map(([id, name, mark]) => [id, { name, mark }]));
-  const MONSTER = new Set(['goblin', 'wolf', 'orc', 'golem']);
+  const MONSTER = new Set(['goblin', 'wolf', 'orc', 'golem', 'fairy', 'pegasus', 'griffon', 'garuda']);
+  // 飛行ユニット（水の上にも置ける）
+  const FLY = new Set(['fairy', 'pegasus', 'pegasusKnight', 'griffon', 'griffonRider', 'garuda']);
   // 大型ユニットの占有マス数（game.js の CLASSES の size と対応）。x, y は占有範囲の奥の角
   const SIZE = { golem: 4 };
   const sizeOf = u => SIZE[u.cls] || 1;
@@ -356,7 +360,7 @@
       const leader = $('uLeader').checked && team === 'enemy';
       if (leader) for (const u of [...M.units, ...M.waves.flatMap(w => w.units)]) delete u.leader;
       const u = {
-        name: $('uName').value.trim() || CLS[cls].name, cls, team, x, y,
+        name: $('uName').value.trim() || CLS[cls].name.replace(/（.*）/, ''), cls, team, x, y,
         lv: clamp(+$('uLv').value || 4, 1, 50), hair: HAIRS[Math.floor(Math.random() * HAIRS.length)],
         facing: +$('uFacing').value,
       };
@@ -603,7 +607,7 @@
       else occ.set(k, u.name);
     }
     if (dup.size) msgs.push(`同じマスに複数のユニットがいます: ${[...dup].join(', ')}`);
-    const bad = all.filter(u => cellsOf(u).some(([x, y]) => M.ter[y]?.[x] === 'w' || gateCell(x, y)));
+    const bad = all.filter(u => cellsOf(u).some(([x, y]) => (M.ter[y]?.[x] === 'w' && !FLY.has(u.cls)) || gateCell(x, y)));
     const rough = all.filter(u => sizeOf(u) > 1).filter(u => {
       const hs = cellsOf(u).map(([x, y]) => M.hgt[y]?.[x] ?? 0);
       return Math.max(...hs) - Math.min(...hs) > 3;

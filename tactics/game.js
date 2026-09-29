@@ -375,6 +375,38 @@
       name: 'ウルフ', sprite: 'wolf', hp: 42, mp: 0, atk: 22, def: 6, agi: 16, move: 6, jump: 3, range: [1, 1], wt: 80, type: 'melee',
       pal: { h: '#8a8a96', b: '#5c5c68', k: '#ffcc30' },
     },
+    // 飛行ユニット：fly = 飛行高度（段）、climb = 1 歩で越えられる段差。水の上や相手の地上ユニットの上も飛べる。
+    // 魔物（pal 固定の配色）と、チーム色の鎧を着た騎乗兵の両方を用意する
+    fairy: {
+      name: '妖精', sprite: 'fairy', fly: 1, climb: 3, hp: 44, mp: 40, atk: 24, def: 6, agi: 16, move: 5, jump: 3,
+      range: [1, 3], wt: 90, type: 'magic',
+      pal: { s: '#f8d8b8', a: '#80e0a0', b: '#50b070', v: '#d8f4ff', w: '#a8e0ff' },
+    },
+    pegasus: {
+      name: 'ペガサス', sprite: 'pegasus', fly: 3, climb: 6, hp: 70, mp: 0, atk: 26, def: 10, agi: 14, move: 6, jump: 6,
+      range: [1, 1], wt: 95, type: 'melee',
+      pal: { w: '#f0f0f8', b: '#c4c8dc', h: '#a8c8ff', v: '#ffffff', d: '#8a7a60', k: '#202040' },
+    },
+    pegasusKnight: {
+      name: 'ペガサスナイト', sprite: 'pegasusKnight', fly: 3, climb: 6, hp: 78, mp: 8, atk: 28, def: 14, agi: 13, move: 6, jump: 6,
+      range: [1, 1], wt: 100, type: 'melee', rider: true,
+      pal: { w: '#f0f0f8', v: '#ffffff', d: '#8a7a60', k: '#202040', m: '#a8c8ff' },
+    },
+    griffon: {
+      name: 'グリフォン', sprite: 'griffon', fly: 5, climb: 9, hp: 92, mp: 0, atk: 32, def: 14, agi: 11, move: 6, jump: 9,
+      range: [1, 1], wt: 105, type: 'melee',
+      pal: { v: '#8a5a30', h: '#f0ece0', y: '#e8b030', w: '#c8a060', b: '#a07840', t: '#6a4a2a', d: '#8a6a40', k: '#201010' },
+    },
+    griffonRider: {
+      name: 'グリフォンライダー', sprite: 'griffonRider', fly: 5, climb: 9, hp: 96, mp: 8, atk: 33, def: 16, agi: 10, move: 6, jump: 9,
+      range: [1, 1], wt: 110, type: 'melee', rider: true,
+      pal: { v: '#8a5a30', m: '#f0ece0', y: '#e8b030', w: '#c8a060', t: '#6a4a2a', d: '#8a6a40', k: '#201010' },
+    },
+    garuda: {
+      name: 'ガルーダ', sprite: 'garuda', fly: 8, climb: 99, hp: 80, mp: 0, atk: 30, def: 10, agi: 15, move: 7, jump: 99,
+      range: [1, 1], wt: 100, type: 'melee',
+      pal: { h: '#d04030', v: '#e08030', a: '#c05028', b: '#8a2a18', y: '#f0c040', k: '#ffe040' },
+    },
     // 大型ユニット：size×size マスを占有し、tall 段ぶんの高さがある（2 段でおよそマスの一辺の長さ）。reachH は近接攻撃が届く高低差
     golem: {
       name: 'ゴーレム', sprite: 'golem', size: 4, tall: 12, hp: 360, mp: 0, atk: 40, def: 24, agi: 3,
@@ -463,6 +495,99 @@
         '..oooo....oooo..',
       ],
     },
+    fairy: {
+      w: 12, head: [2, 5], feet: 10, flap: true,
+      rows: [
+        '..v......v..',
+        '.vvv.oo.vvv.',
+        'vvvvohhovvvv',
+        'vvvohhhhovvv',
+        '.vvoskskovv.',
+        '..vossssov..',
+        '..voaaaaov..',
+        '.vvoaaaaovv.',
+        'vvvoabbaovvv',
+        '.vv.oaao.vv.',
+        '.....ss.....',
+        '.....ss.....',
+        '.....oo.....',
+      ],
+    },
+    pegasus: {
+      w: 24, head: [5, 9], feet: 15, flap: true,
+      rows: [
+        '',
+        '......oo',
+        '.....ovvo',
+        '....ovvvvo..........oo',
+        '...ovvvvvvo........ohho',
+        '...ovvvvvvvo......ohwwo',
+        '....ovvvvvvvo....ohwwwwo',
+        '.....ovvvvvvvo..ohwwwkwo',
+        '..oo..ovvvvvvvoohwwwwwwo',
+        '.ohho..ovvvvvvohwwwoowwo',
+        '.ohhoooowwwwwwwwwwwo..o',
+        '..ohowwwwwwwwwwwwwwo',
+        '...oowwwwwwwwwwwwwwo',
+        '....owwwwwwwwwwwwwo',
+        '....owwbbwwwwwbbwwo',
+        '....owo.owo...owo.owo',
+        '....owo.owo...owo.owo',
+        '....owo.owo...owo.owo',
+        '....odo.odo...odo.odo',
+        '....ooo.ooo...ooo.ooo',
+      ],
+    },
+    griffon: {
+      w: 24, head: [5, 5], feet: 15, flap: true,
+      rows: [
+        '.....oo',
+        '....ovvo',
+        '...ovvvvo',
+        '..ovvvvvvo.........ooo',
+        '..ovvvvvvvo.......ohhhoo',
+        '...ovvvvvvvo.....ohhhkhyo',
+        '...ovvvvvvvvo...ohhhhhyyo',
+        '....ovvvvvvvvo.ohhhhhoyo',
+        '.o...ovvvvvvvvohhhhho.o',
+        'oto...ovvvvvvvhhhhho',
+        '.oto.oowwwwwwwhhhho',
+        '..otowwwwwwwwwwwwo',
+        '...oowwwwwwwwwwwwwo',
+        '....owwwwwwwwwwwwwo',
+        '....owwbbwwwwwbbwwo',
+        '....owo.owo...ohho.ohho',
+        '....owo.owo...oho..oho',
+        '....owo.owo...oho..oho',
+        '....odo.odo...oyyo.oyyo',
+        '....ooo.ooo...oooo.oooo',
+      ],
+    },
+    garuda: {
+      w: 20, head: [2, 3], feet: 13, flap: true,
+      rows: [
+        '',
+        '',
+        '',
+        '........oo',
+        '.......ohho',
+        '......ohhkhoyy',
+        '......ohhhhoyo',
+        '.vvo..ohhhho....ovv',
+        'vvvvo.oaaaao..ovvvv',
+        'vvvvvoaaaaaaoovvvvv',
+        '.vvvvoaaaaaaaovvvv',
+        '..vvvoaaaaaaaovvv',
+        '...vvoaabbaaaovv',
+        '....voaabbaaaov',
+        '.....oaaaaaaao',
+        '......oaaaaao',
+        '......oyo.oyo',
+        '......oyo.oyo',
+        '.....oyyo.oyyo',
+        '.....ooo...ooo',
+      ],
+    },
     caster: {
       head: [5, 7], feet: 17,
       rows: [
@@ -490,9 +615,36 @@
     },
   };
 
+  // 騎乗兵：乗騎のドット絵に騎手を重ねる（騎手はチーム色の鎧 a / b、兜の房 c）
+  const RIDER = [
+    '',
+    '..........oco',
+    '.........oaaao',
+    '.........oskso',
+    '........ooaaaoo',
+    '........oaaaaao',
+    '........oabbbao',
+    '.........obbbo',
+    '.........oaao',
+  ];
+  const overlay = (base, top) => base.map((row, r) => {
+    const t = top[r] || '';
+    return [...row.padEnd(Math.max(row.length, t.length), '.')].map((c, i) => t[i] && t[i] !== '.' ? t[i] : c).join('');
+  });
+  // 乗騎のたてがみ・頭は m（騎手の髪 h と区別する）
+  const mane = rows => rows.map(r => r.replace(/h/g, 'm'));
+  SPRITES.pegasusKnight = { ...SPRITES.pegasus, head: [2, 3], rows: overlay(mane(SPRITES.pegasus.rows), RIDER) };
+  SPRITES.griffonRider = { ...SPRITES.griffon, head: [2, 3], rows: overlay(mane(SPRITES.griffon.rows), RIDER) };
+
   const TEAM_PAL = {
-    player: { fighter: { a: '#4a74d8', b: '#2c4aa8', c: '#f0e8d0' }, caster: { a: '#6a7ae8', b: '#3a48b0', c: '#2c3890' } },
-    enemy: { fighter: { a: '#c84a3c', b: '#842a24', c: '#3a2c30' }, caster: { a: '#c05050', b: '#842c2c', c: '#4a1a24' } },
+    player: {
+      fighter: { a: '#4a74d8', b: '#2c4aa8', c: '#f0e8d0' }, caster: { a: '#6a7ae8', b: '#3a48b0', c: '#2c3890' },
+      pegasusKnight: { a: '#5a84e8', b: '#2c4aa8', c: '#f0e8d0' }, griffonRider: { a: '#4a74d8', b: '#2c4aa8', c: '#f0e8d0' },
+    },
+    enemy: {
+      fighter: { a: '#c84a3c', b: '#842a24', c: '#3a2c30' }, caster: { a: '#c05050', b: '#842c2c', c: '#4a1a24' },
+      pegasusKnight: { a: '#d05a48', b: '#842a24', c: '#3a2c30' }, griffonRider: { a: '#c84a3c', b: '#842a24', c: '#3a2c30' },
+    },
   };
 
   function paletteFor(u) {
@@ -617,13 +769,18 @@
       return [front, front, back, back];
     }
     const def = SPRITES[u.C.sprite], pal = paletteFor(u);
-    const make = (back, bob) => pixelArt(def.rows, pal, SPR_W, SPR_H, (ch, r) => {
+    // 幅はスプライトごと（既定 16）、高さは行数に合わせて下端を足元にそろえる。
+    // 飛行ユニット（flap）は 2 コマ目で翼 v を 2px 下げて羽ばたかせる
+    const w = def.w || SPR_W, h = Math.max(SPR_H, def.rows.length), top = h - def.rows.length;
+    const make = (back, bob) => pixelArt(def.rows, pal, w, h + (def.flap ? 2 : 0), (ch, r) => {
       if (back && r >= def.head[0] && r <= def.head[1] && (ch === 's' || ch === 'k')) ch = 'h';
-      return [ch, bob && r < def.feet ? r + 1 : r];
+      if (def.flap) return [ch, top + r + (bob && ch === 'v' ? 2 : 0)];
+      return [ch, top + (bob && r < def.feet ? r + 1 : r)];
     });
-    const front = [make(false, false), make(false, true)];
-    const back = [make(true, false), make(true, true)];
-    return [front, front.map(flip), back.map(flip), back];
+    const foot = c => { c.foot = h - 1; return c; };
+    const front = [make(false, false), make(false, true)].map(foot);
+    const back = [make(true, false), make(true, true)].map(foot);
+    return [front, front.map(c => foot(flip(c))), back.map(c => foot(flip(c))), back];
   }
 
   function createUnit(r) {
@@ -655,6 +812,20 @@
     const dx = Math.max(0, a.x - (b.x + nb - 1), b.x - (a.x + na - 1));
     const dy = Math.max(0, a.y - (b.y + nb - 1), b.y - (a.y + na - 1));
     return dx + dy;
+  }
+  // 飛行高度（段）と、足場＋高度の実効的な高さ
+  const altOf = u => u?.C?.fly || 0;
+  const effH = (u, p = u) => footH(p.x, p.y, sizeOf(u)) + altOf(u);
+  // 攻撃対象の実効的な高さ。pos に飛行ユニットがいればその高度を足す
+  const targetH = (pos, tgt) => {
+    const tu = tgt?.C ? tgt : unitAt(pos.x, pos.y);
+    return H(pos.x, pos.y) + altOf(tu);
+  };
+  // 1 歩進めるか。地上は通行不可の地形と jump 以上の段差を越えられない。
+  // 飛行は水・堀も越え、城門なども見た目の高さ topH で climb 段まで越えられる
+  function stepOk(u, a, t) {
+    if (altOf(u)) return Math.abs(topH(t.x, t.y) - topH(a.x, a.y)) <= u.C.climb;
+    return !TERRAIN[t.type].blocked && Math.abs(t.h - H(a.x, a.y)) <= u.C.jump;
   }
   const centerOf = (u, p = u) => ({ x: p.x + (sizeOf(u) - 1) / 2, y: p.y + (sizeOf(u) - 1) / 2 });
   const gateAt = (x, y) => gates.find(g => !g.dead && g.tiles.some(t => t.x === x && t.y === y));
@@ -719,10 +890,10 @@
       if (cur.c >= u.C.move + (u.moveBonus || 0)) continue;
       for (const [dx, dy] of DIRS) {
         const nx = cur.x + dx, ny = cur.y + dy, t = tileAt(nx, ny), k = key(nx, ny);
-        if (!t || TERRAIN[t.type].blocked || reach.has(k)) continue;
-        if (Math.abs(t.h - H(cur.x, cur.y)) > u.C.jump) continue;
+        if (!t || reach.has(k) || !stepOk(u, cur, t)) continue;
+        // 味方の上は通過できる。飛行ユニットは相手の地上ユニットの上も飛び越えられる
         const occ = unitAt(nx, ny);
-        if (occ && occ.team !== u.team) continue;
+        if (occ && occ.team !== u.team && !(altOf(u) && !altOf(occ))) continue;
         const node = { x: nx, y: ny, c: cur.c + 1, prev: key(cur.x, cur.y) };
         reach.set(k, node);
         q.push(node);
@@ -732,7 +903,7 @@
   }
   // 止まれるマス（通過しただけの味方のマスは除く）
   const stopTiles = (u, reach) => sizeOf(u) > 1 ? [...reach.values()].filter(s => !s.pass)
-    : [...reach.values()].filter(s => { const o = unitAt(s.x, s.y); return !o || o === u; });
+    : [...reach.values()].filter(s => { const o = unitAt(s.x, s.y); return (!o || o === u) && !tileAt(s.x, s.y).gate; });
   function pathTo(reach, dest) {
     const path = [];
     for (let n = reach.get(key(dest.x, dest.y)); n; n = n.prev && reach.get(n.prev)) path.unshift({ x: n.x, y: n.y });
@@ -743,21 +914,23 @@
 
   // 弓は高所から撃つと射程が伸び、近接は高さ差 2 まで
   // 大型ユニットは体の端から数え、足場の高さは占有マスの最大
+  // 高さは飛行高度を含めた実効値で比べる。飛行ユニットの近接攻撃は急降下なので高低差を問わない
   function inRange(u, from, tgt) {
     const n = sizeOf(u);
     const d = gap(from, tgt, n, 1);
-    const dh = footH(from.x, from.y, n) - H(tgt.x, tgt.y);
+    const dh = effH(u, from) - targetH(tgt, tgt);
     let [mn, mx] = u.C.range;
     if (u.C.type === 'bow') mx += clamp(Math.floor(dh / 2), 0, 2);
     if (d < mn || d > mx) return false;
-    return !(u.C.type === 'melee' && Math.abs(dh) > (u.C.reachH ?? 2));
+    return !(u.C.type === 'melee' && !altOf(u) && Math.abs(dh) > (u.C.reachH ?? 2));
   }
   const attackTileSet = (u, from) => new Set(tiles.filter(t => inRange(u, from, t)).map(t => key(t.x, t.y)));
 
   // 高低差と攻撃方向（正面・側面・背面）で命中とダメージが変わる
   // pos: 攻撃するマス（複数マスの城門ではユニット位置と異なる）
   function forecast(att, tgt, from, pos = tgt) {
-    const dh = footH(from.x, from.y, sizeOf(att)) - H(pos.x, pos.y);
+    const dh = effH(att, from) - targetH(pos, tgt);
+    const antiAir = att.C.type === 'bow' && altOf(tgt) > 0;   // 弓は飛行ユニットに強い
     const d = dirToward(pos, centerOf(att, from));
     // 城門などの構造物には向きがない（常に正面扱い・必中）
     const rel = tgt.facing == null || d === tgt.facing ? 'front' : d === (tgt.facing + 2) % 4 ? 'back' : 'side';
@@ -765,8 +938,9 @@
     let dmg = magic ? att.atk * 1.3 - tgt.def * 0.4 : att.atk * 1.25 - tgt.def * 0.7;
     dmg *= 1 + clamp(dh * 0.08, -0.3, 0.5);
     if (!magic) dmg *= rel === 'back' ? 1.4 : rel === 'side' ? 1.2 : 1;
+    if (antiAir) dmg *= 1.3;
     let hit = tgt.isObject ? 99
-      : magic ? 92 : 80 + (att.agi - tgt.agi) * 2 + dh * 4 + (rel === 'back' ? 15 : rel === 'side' ? 7 : 0);
+      : magic ? 92 : 80 + (att.agi - tgt.agi) * 2 + clamp(dh, -5, 5) * 4 + (rel === 'back' ? 15 : rel === 'side' ? 7 : 0) + (antiAir ? 15 : 0);
     return { dmg: Math.max(1, Math.round(dmg)), hit: clamp(Math.round(hit), 5, 99), rel, magic };
   }
   const REL = { front: '', side: '側面から', back: '背後から!' };
@@ -899,20 +1073,36 @@
     u.ghost = cx >= gx - c.ax && cx < gx - c.ax + c.width && cy >= gy - c.ay && cy < gy - c.ay + c.height - 8;
   }
 
+  // 飛行ユニットは影を地面に残し、本体だけ高度ぶん持ち上げる。高いほど影は小さく薄く、揺れは大きくゆっくり
+  const flyBob = (u, now) => {
+    const a = altOf(u);
+    if (!a) return 0;
+    return Math.sin(now / (a <= 1 ? 140 : a >= 8 ? 520 : 320) + u.anim * 3) * (a <= 1 ? 1 : a >= 5 ? 2.5 : 1.5);
+  };
+  const bodyAlt = (u, now) => altOf(u) + (u.flyOff || 0) + flyBob(u, now) / HS;
+
   function drawUnit(u, ox, oy, now) {
     const gx = Math.round((u.rx - u.ry) * 16 + ox);
     const gy = Math.round((u.rx + u.ry) * 8 + 8 + oy);
-    const bodyY = gy - Math.round(u.rh * HS), groundY = gy - Math.round(u.gh * HS);
-    // 能力上昇中（激昂など）は足元が色付きで明滅する
-    ctx.globalAlpha = u.alpha * (u.aura ? 0.55 + 0.3 * Math.sin(now / 120) : 0.4);
+    const alt = altOf(u), fc = u.frames[u.facing][Math.floor(now / (alt ? 160 : u.moving ? 110 : 420) + u.anim) % 2];
+    const bodyY = gy - Math.round((u.rh + bodyAlt(u, now)) * HS), groundY = gy - Math.round(u.gh * HS);
+    // 影（能力上昇中は色付きで明滅）。飛行ユニットは高度に応じて小さく薄く
+    const sw = Math.max(3, Math.round((fc.width >> 2) + 2 - alt * 0.6));
+    ctx.globalAlpha = u.alpha * (u.aura ? 0.55 + 0.3 * Math.sin(now / 120) : Math.max(0.15, 0.4 - alt * 0.03));
     ctx.fillStyle = u.aura || '#000';
-    ctx.fillRect(gx - 4, groundY - 2, 8, 1);
-    ctx.fillRect(gx - 6, groundY - 1, 12, 2);
-    ctx.fillRect(gx - 4, groundY + 1, 8, 1);
+    ctx.fillRect(gx - sw + 2, groundY - 2, (sw - 2) * 2, 1);
+    ctx.fillRect(gx - sw, groundY - 1, sw * 2, 2);
+    ctx.fillRect(gx - sw + 2, groundY + 1, (sw - 2) * 2, 1);
+    // カーソルが乗っているか行動中の飛行ユニットは、影から本体へ点線を引いて足元のマスを示す
+    const pointed = alt && (u === state.active || (cursorVisible() && covers(u, state.cursor.x, state.cursor.y)));
+    if (pointed) {
+      ctx.globalAlpha = u.alpha * 0.7;
+      ctx.fillStyle = '#e8f0ff';
+      for (let y = groundY - 4; y > bodyY + 1; y -= 3) ctx.fillRect(gx, y, 1, 1);
+    }
     ctx.globalAlpha = u.alpha;
     if (!(u.blink && Math.floor(now / 50) % 2)) {
-      const fr = Math.floor(now / (u.moving ? 110 : 420) + u.anim) % 2;
-      ctx.drawImage(u.frames[u.facing][fr], gx - 8 + Math.round(u.offX), bodyY - 19 + Math.round(u.offY));
+      ctx.drawImage(fc, gx - (fc.width >> 1) + Math.round(u.offX), bodyY - fc.foot + Math.round(u.offY));
     }
     ctx.globalAlpha = 1;
   }
@@ -996,7 +1186,7 @@
     for (const u of units) {
       if (u.gone) continue;
       const n = sizeOf(u) - 1;
-      focus.push({ k: (u.sortKey ?? u.x + u.y) + n + 0.5, x: (u.rx - u.ry) * 16 + ox, y: (u.rx + u.ry + n) * 8 + 8 - u.rh * HS + oy });
+      focus.push({ k: (u.sortKey ?? u.x + u.y) + n + 0.5, x: (u.rx - u.ry) * 16 + ox, y: (u.rx + u.ry + n) * 8 + 8 - (u.rh + altOf(u)) * HS + oy });
     }
     if (cursorVisible()) {
       const { x, y } = state.cursor, [cx, cy] = toScreen(x, y, topH(x, y));
@@ -1030,7 +1220,7 @@
       const [cx, cy] = toScreen(x, y, topH(x, y));
       const bob = Math.round(Math.abs(Math.sin(now / 160)) * 3);
       const cu = unitAt(x, y);
-      ctx.drawImage(ARROW, cx - 4, cy - (!cu ? 18 : sizeOf(cu) > 1 ? 16 + cu.C.tall * HS : 32) - bob);
+      ctx.drawImage(ARROW, cx - 4, cy - (!cu ? 18 : sizeOf(cu) > 1 ? 16 + cu.C.tall * HS : 32 + Math.round(bodyAlt(cu, now) * HS)) - bob);
     }
   }
 
@@ -1069,7 +1259,7 @@
         `<div class="row"><span class="nm">${u.name}</span><span class="cl">${u.name === u.C.name ? '' : u.C.name}</span><span class="lv">Lv${u.lv}</span></div>` +
         `<div class="row"><span class="lb">HP</span>${bar(u.hp, u.maxHp)}<span class="num">${u.hp}/${u.maxHp}</span></div>` +
         `<div class="row"><span class="lb">MP</span>${bar(u.mp, u.maxMp, 'mp')}<span class="num">${u.mp}/${u.maxMp}</span></div>` +
-        `<div class="row">WT <b>${u.wt}</b>&nbsp;攻<b>${u.atk}</b>&nbsp;防<b>${u.def}</b>${u.status ? `&nbsp;<span class="st">${u.status}</span>` : u.leader ? '&nbsp;<span class="rel">★将</span>' : ''}</div>`;
+        `<div class="row">WT <b>${u.wt}</b>&nbsp;攻<b>${u.atk}</b>&nbsp;防<b>${u.def}</b>${altOf(u) ? `&nbsp;<span class="fly">高度${altOf(u)}</span>` : ''}${u.status ? `&nbsp;<span class="st">${u.status}</span>` : u.leader ? '&nbsp;<span class="rel">★将</span>' : ''}</div>`;
     }
 
     let info = `<div class="hint">${state.hint}</div>`;
@@ -1248,14 +1438,17 @@
     state.camUnit = u;
     u.moving = true;
     for (let i = 1; i < path.length; i++) {
-      const a = path[i - 1], b = path[i], h0 = footH(a.x, a.y, sizeOf(u)), h1 = footH(b.x, b.y, sizeOf(u));
+      const a = path[i - 1], b = path[i];
+      // 飛行ユニットは地形（城門などの見た目の高さも含む）に沿って滑空する
+      const fl = altOf(u) > 0;
+      const h0 = fl ? topH(a.x, a.y) : footH(a.x, a.y, sizeOf(u)), h1 = fl ? topH(b.x, b.y) : footH(b.x, b.y, sizeOf(u));
       u.facing = dirToward(a, b);
       u.sortKey = Math.max(a.x + a.y, b.x + b.y);
-      await tween(h0 === h1 ? 150 : 240, p => {
+      await tween(fl ? 130 : h0 === h1 ? 150 : 240, p => {
         u.rx = lerp(a.x, b.x, p);
         u.ry = lerp(a.y, b.y, p);
         u.gh = lerp(h0, h1, p);
-        u.rh = u.gh + (h0 !== h1 ? Math.sin(Math.PI * p) * (0.6 + Math.abs(h1 - h0) * 0.35) : 0);
+        u.rh = u.gh + (!fl && h0 !== h1 ? Math.sin(Math.PI * p) * (0.6 + Math.abs(h1 - h0) * 0.35) : 0);
       });
       u.x = b.x;
       u.y = b.y;
@@ -1282,17 +1475,19 @@
     setCursor(pos.x, pos.y);
     if (type === 'magic') a.mp -= MAGIC_COST;
     // 城門は扉の中ほどを狙う
-    const at = [pos.x, pos.y, t.isObject ? H(pos.x, pos.y) + 2 : H(pos.x, pos.y)];
+    const at = [pos.x, pos.y, t.isObject ? H(pos.x, pos.y) + 2 : targetH(pos, t)];
+    // 飛行ユニットの近接攻撃は相手の高さまで急降下する
+    const dive = type === 'melee' && altOf(a) ? Math.max(0, effH(a) - at[2] - 0.5) : 0;
     const ac = centerOf(a), [ax, ay] = worldPos(ac.x, ac.y, footH(a.x, a.y, sizeOf(a))), [tx, ty] = worldPos(pos.x, pos.y, at[2]);
     const lunge = sizeOf(a) > 1 ? 12 : 6;
     const len = Math.hypot(tx - ax, ty - ay) || 1, nx = (tx - ax) / len, ny = (ty - ay) / len;
 
     if (type === 'melee') {
-      await tween(110, p => { a.offX = nx * lunge * p; a.offY = ny * lunge * p; });
+      await tween(dive ? 220 : 110, p => { a.offX = nx * lunge * p; a.offY = ny * lunge * p; a.flyOff = -dive * p; });
     } else if (type === 'bow') {
       await tween(140, p => { a.offX = -nx * 2 * p; a.offY = -ny * 2 * p; });
       a.offX = a.offY = 0;
-      const e = { kind: 'arrow', a: [a.x, a.y, H(a.x, a.y)], b: at, p: 0 };
+      const e = { kind: 'arrow', a: [a.x, a.y, effH(a)], b: at, p: 0 };
       effects.push(e);
       await tween(120 + len * 3, p => { e.p = p; });
       effects.splice(effects.indexOf(e), 1);
@@ -1321,7 +1516,8 @@
       t.offX = 0;
     }
     if (sizeOf(a) > 1) state.shake = performance.now() + 350;   // 巨体の一撃で画面が揺れる
-    if (type === 'melee') await tween(140, p => { a.offX = nx * lunge * (1 - p); a.offY = ny * lunge * (1 - p); });
+    if (type === 'melee') await tween(dive ? 260 : 140, p => { a.offX = nx * lunge * (1 - p); a.offY = ny * lunge * (1 - p); a.flyOff = -dive * (1 - p); });
+    a.flyOff = 0;
     a.offX = a.offY = 0;
     updateHUD();
     await wait(450);
@@ -1361,8 +1557,7 @@
       const c = q.shift(), d = dist.get(key(c.x, c.y));
       for (const [dx, dy] of DIRS) {
         const nx = c.x + dx, ny = c.y + dy, t = tileAt(nx, ny), k = key(nx, ny);
-        if (!t || TERRAIN[t.type].blocked || dist.has(k)) continue;
-        if (Math.abs(t.h - H(c.x, c.y)) > u.C.jump) continue;
+        if (!t || dist.has(k) || !stepOk(u, c, t)) continue;
         dist.set(k, d + 1);
         q.push({ x: nx, y: ny });
       }
@@ -1710,7 +1905,7 @@
         }
         return tileAt(u.x + pick[0], u.y + pick[1]);
       }
-      const [gx, gy] = toScreen(u.x, u.y, H(u.x, u.y));
+      const [gx, gy] = toScreen(u.x, u.y, H(u.x, u.y) + altOf(u));
       if (lx >= gx - 6 && lx < gx + 6 && ly >= gy - 18 && ly < gy) return tileAt(u.x, u.y);
     }
     for (let i = drawOrder.length - 1; i >= 0; i--) {

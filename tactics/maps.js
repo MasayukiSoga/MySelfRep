@@ -11,7 +11,9 @@
 //                  / defend（rounds ラウンドの間、goal のマスに敵を入れない）。どの型でも敵全滅で勝利。
 //           ラウンドは WT の経過 100 ごとに 1 進む（全員がおよそ 1 回ずつ行動する長さ）
 // reinforcements: [{ round, text, units: [...] }] 指定ラウンドに入ると増援が出現
-// units   : team は 'player' / 'enemy'。cls は knight / soldier / archer / wizard / goblin / wolf / orc / golem。
+// units   : team は 'player' / 'enemy'。cls は knight / soldier / archer / wizard / goblin / wolf / orc / golem、
+//           飛行: fairy 妖精（低空）/ pegasus・pegasusKnight（中空）/ griffon・griffonRider（高空）/ garuda（最高空）。
+//           騎乗兵（pegasusKnight / griffonRider）はチーム色の鎧、それ以外の魔物は固有の配色
 //           golem は 4×4 マスを占有する大型ユニット。x, y は占有範囲の奥の角（x, y が最小のマス）
 //           id: イベントで参照する名前（省略時は name で参照）
 //           ai: 思考ルーチン。aggressive 突撃 / cautious 慎重 / guard 守備（攻撃できる時だけ動く）/ hold 固守（動かない）
@@ -469,6 +471,65 @@ window.TACTICS_MAPS = [
           { type: 'buff', target: 'golem', atk: 12, move: 1, label: '暴走' },
         ],
       },
+    ],
+  },
+  {
+    id: 'canyon',
+    name: '天空の渓谷',
+    desc: '深い渓谷を挟んだ台地の戦い。地上部隊は南の浅瀬まで回り込むが、ペガサスやグリフォンは谷を飛び越えられる。低空の妖精は崖を越えられない。弓は飛行ユニットに強い。',
+    objective: { type: 'leader', text: '見張り塔の敵将 ザインの撃破' },
+    // x=0〜5 が味方の台地（高さ 6）、x=7〜8 が川、x=10〜15 が敵の台地（高さ 7、塔は 9）。南端（y=15）に浅瀬
+    height: [
+      '6666661001777799',
+      '6666661001777799',
+      '6666661001777799',
+      '6666661001777777',
+      '6666661001777777',
+      '6666661001777777',
+      '6666661001777777',
+      '6666661001777777',
+      '6666661001777777',
+      '6666661001777777',
+      '6666661001777777',
+      '5555551001666666',
+      '4444441001555555',
+      '3333331001333333',
+      '2222221001222222',
+      '1111111001111111',
+    ],
+    terrain: [
+      'gggggg.ww.ggggrr',
+      'gggggg.ww.ggggrr',
+      'gggggg.ww.ggggrr',
+      'gggggg.ww.gggggg',
+      'gggggg.ww.gggggg',
+      'gggggg.ww.gggggg',
+      'gggggg.ww.gggggg',
+      'gggggg.ww.gggggg',
+      'gggggg.ww.gggggg',
+      'gggggg.ww.gggggg',
+      'gggggg.ww.gggggg',
+      'gggggg.ww.gggggg',
+      'gggggg.ww.gggggg',
+      'gggggg.ww.gggggg',
+      'gggggg.ww.gggggg',
+      'gggggg.ss.gggggg',
+    ],
+    units: [
+      { name: 'レオン', cls: 'knight', team: 'player', x: 2, y: 4, lv: 5, hair: '#c89040', facing: 0 },
+      { name: 'ガルド', cls: 'soldier', team: 'player', x: 3, y: 5, lv: 5, hair: '#503828', facing: 0 },
+      { name: 'セリカ', cls: 'archer', team: 'player', x: 1, y: 6, lv: 4, hair: '#e8d070', facing: 0 },
+      { name: 'ミラ', cls: 'wizard', team: 'player', x: 1, y: 3, lv: 4, hair: '#b05a30', facing: 0 },
+      { name: 'シエル', cls: 'pegasusKnight', team: 'player', x: 4, y: 3, lv: 5, hair: '#e0c0f0', facing: 0 },
+      { name: 'ルーク', cls: 'griffonRider', team: 'player', x: 4, y: 7, lv: 5, hair: '#5a3a2a', facing: 0 },
+      { name: 'ティナ', cls: 'fairy', team: 'player', x: 2, y: 8, lv: 4, hair: '#f0e070', facing: 0 },
+      { name: 'ノア', cls: 'archer', team: 'player', x: 3, y: 9, lv: 4, hair: '#8a5a3a', facing: 0 },
+      { name: 'ザイン', cls: 'archer', team: 'enemy', x: 14, y: 1, lv: 6, hair: '#404850', facing: 2, leader: true, ai: 'hold' },
+      { name: 'ヘルガ', cls: 'archer', team: 'enemy', x: 12, y: 2, lv: 4, hair: '#d0a060', facing: 2, ai: 'sniper' },
+      { name: 'ロイ', cls: 'soldier', team: 'enemy', x: 13, y: 6, lv: 4, hair: '#6a4020', facing: 2 },
+      { name: 'ガルーダ', cls: 'garuda', team: 'enemy', x: 11, y: 4, lv: 5, hair: '#000000', facing: 2 },
+      { name: 'グリフォン', cls: 'griffon', team: 'enemy', x: 12, y: 9, lv: 4, hair: '#000000', facing: 2 },
+      { name: 'ペガサス', cls: 'pegasus', team: 'enemy', x: 11, y: 11, lv: 4, hair: '#000000', facing: 2 },
     ],
   },
 ];
