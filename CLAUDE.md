@@ -27,3 +27,4 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - イベント: マップの `events`（`{ when, do }`）を `runEvents` が移動後・攻撃後・ターン開始時に評価し、条件成立で 1 回だけ `doAction` を実行（思考の切り替え `setAi`、能力変化 `buff`、台詞、増援、離脱 `escape`、勝敗決定）。対象指定は `selectUnits`（id / name / `@enemy` 等）。条件の種類は `evalCond` に追加する。離脱したユニットは `dead && escaped` で、撃破扱いにはならない。
 - 早送り: `speed()` が敵の手番中（とオートバトル中）だけ 4 を返し、`wait` / `tween` の時間を割る。演出の待ち時間は必ずこの 2 つを通すこと。
 - 魔物クラスは `CLASSES` の `pal` で固有配色を持ち、チーム色を上書きする。
+- 大型ユニット（`CLASSES` の `size` > 1、例: golem 4×4）: `(x, y)` は占有範囲の奥の角。占有判定は `covers` / `unitAt`、距離は `gap`（体の端から）、足場の高さは `footH`（占有マスの最大）、移動は `computeReachBig`（`bigSpot` で全マスの通行・空き・起伏 3 段以内を確認）。見た目は `GOLEM_MODEL` の直方体を `buildVoxel` でタイルと同じ投影に描いたもの。描画は `bigStrips` で 16px 幅の縦の短冊に分け、各短冊をその列で最も手前の占有マスの直後に描くことで前後関係を保つ。後ろにカーソルがあると半透明（`updateGhost`）。

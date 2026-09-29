@@ -26,10 +26,14 @@
   const TNAME = Object.fromEntries(TERRAINS.map(t => [t.code, t.name]));
   const CLASSES = [
     ['knight', 'ナイト', '騎'], ['soldier', 'ソルジャー', '兵'], ['archer', 'アーチャー', '弓'], ['wizard', 'ウィザード', '魔'],
-    ['goblin', 'ゴブリン', 'ゴ'], ['wolf', 'ウルフ', '狼'], ['orc', 'オーク', 'オ'],
+    ['goblin', 'ゴブリン', 'ゴ'], ['wolf', 'ウルフ', '狼'], ['orc', 'オーク', 'オ'], ['golem', 'ゴーレム', '巨'],
   ];
   const CLS = Object.fromEntries(CLASSES.map(([id, name, mark]) => [id, { name, mark }]));
-  const MONSTER = new Set(['goblin', 'wolf', 'orc']);
+  const MONSTER = new Set(['goblin', 'wolf', 'orc', 'golem']);
+  // 大型ユニットの占有マス数（game.js の CLASSES の size と対応）。x, y は占有範囲の奥の角
+  const SIZE = { golem: 4 };
+  const sizeOf = u => SIZE[u.cls] || 1;
+  const covers = (u, x, y) => x >= u.x && y >= u.y && x < u.x + sizeOf(u) && y < u.y + sizeOf(u);
   // game.js の AI_PROFILES と対応
   const AIS = [
     ['', '自動（陣営・役割から決定）'], ['aggressive', '突撃'], ['cautious', '慎重'], ['guard', '守備（攻撃できる時だけ動く）'],
@@ -205,7 +209,7 @@
       M.hgt = Array.from({ length: H }, (_, y) => Array.from({ length: W }, (_, x) => M.hgt[y]?.[x] ?? 0));
       M.ter = Array.from({ length: H }, (_, y) => Array.from({ length: W }, (_, x) => M.ter[y]?.[x] ?? '.'));
       M.W = W; M.H = H;
-      const inside = p => p.x >= 0 && p.y >= 0 && p.x < W && p.y < H;
+      const inside = p => p.x >= 0 && p.y >= 0 && p.x + (SIZE[p.cls] || 1) <= W && p.y + (SIZE[p.cls] || 1) <= H;
       M.units = M.units.filter(inside);
       for (const w of M.waves) w.units = w.units.filter(inside);
       M.gates = M.gates.filter(g => inside(g) && g.x + g.width <= W);
@@ -248,7 +252,7 @@
   });
   $('swatches').querySelector('[data-code="g"]').classList.add('on');
 
-  $('uCls').innerHTML = CLASSES.map(([id, name]) => `<option value="${id}">${name}</option>`).join('');
+  $('uCls').innerHTML = CLASSES.map(([id, name]) => `<option value="${id}">${name}${SIZE[id] ? `（${SIZE[id]}×${SIZE[id]} マス）` : ''}</option>`).join('');
   $('uAi').innerHTML = AIS.map(([id, name]) => `<option value="${id}">${name}</option>`).join('');
 
   // エリア
@@ -322,7 +326,7 @@
     } else if (tool === 'terrain') {
       for (const [cx, cy] of brushCells(x, y, +$('brushT').value)) M.ter[cy][cx] = right ? '.' : terrainCode;
     } else if (tool === 'unit') {
-      const list = unitList(), i = list.findIndex(u => u.x === x && u.y === y);
+      const list = unitList(), i = list.findIndex(u => covers(u, x, y));
       if (pickOnly) {
         // Shift+クリック：既存ユニットの設定をフォームへ読み取る（変更して置き直す用）
         const u = list[i];
@@ -334,7 +338,13 @@
       }
       if (i >= 0) list.splice(i, 1);
       if (right) return;
-      const cls = $('uCls').value, team = $('uTeam').value;
+      const cls = $('uCls').value, team = $('uTeam').value, n = SIZE[cls] || 1;
+      if (x + n > M.W || y + n > M.H) { setStatus(`${CLS[cls].name}は ${n}×${n} マス必要です（クリックしたマスが奥の角）`); return; }
+      // 大型ユニットは占有範囲に重なるユニットを取り除く
+      for (let k = list.length - 1; k >= 0; k--) {
+        const o = list[k];
+        if ([...Array(n * n)].some((_, q) => covers(o, x + q % n, y + Math.floor(q / n)))) list.splice(k, 1);
+      }
       const leader = $('uLeader').checked && team === 'enemy';
       if (leader) for (const u of [...M.units, ...M.waves.flatMap(w => w.units)]) delete u.leader;
       const u = {
@@ -403,10 +413,22 @@
   }
 
   function drawUnit(u, solid, label) {
-    const [tx, ty] = cellTop(u.x, u.y), cx = tx, cy = ty + CH / 2;
+    const n = sizeOf(u);
+    // 大型ユニットは占有範囲を大きなひし形で示し、印はその中央に置く
+    const [tx, ty] = cellTop(u.x + (n - 1) / 2, u.y + (n - 1) / 2), cx = tx, cy = ty + CH / 2;
     const col = MONSTER.has(u.cls) ? '#4e8a36' : u.team === 'player' ? '#3c64d0' : '#c43c34';
     g2.globalAlpha = solid ? 1 : 0.4;
-    const r = CH * 0.4;
+    if (n > 1) {
+      const [ax, ay] = cellTop(u.x, u.y), [bx, by] = cellTop(u.x + n, u.y), [cx2, cy2] = cellTop(u.x + n, u.y + n), [dx, dy] = cellTop(u.x, u.y + n);
+      g2.beginPath();
+      g2.moveTo(ax, ay); g2.lineTo(bx, by); g2.lineTo(cx2, cy2); g2.lineTo(dx, dy); g2.closePath();
+      g2.fillStyle = 'rgba(80,110,60,.35)';
+      g2.fill();
+      g2.strokeStyle = col;
+      g2.lineWidth = 2;
+      g2.stroke();
+    }
+    const r = CH * 0.4 * (n > 1 ? 2 : 1);
     g2.beginPath();
     g2.arc(cx, cy, r, 0, Math.PI * 2);
     if (label) {
@@ -519,8 +541,8 @@
   function setStatus(msg) { $('status').textContent = msg; }
   function describe([x, y]) {
     const code = M.ter[y][x];
-    const units = [...M.units.filter(u => u.x === x && u.y === y).map(u => `${u.name}`),
-      ...M.waves.flatMap(w => w.units.filter(u => u.x === x && u.y === y).map(u => `${u.name}(R${w.round})`))];
+    const units = [...M.units.filter(u => covers(u, x, y)).map(u => `${u.name}`),
+      ...M.waves.flatMap(w => w.units.filter(u => covers(u, x, y)).map(u => `${u.name}(R${w.round})`))];
     const areas = Object.entries(M.areas).filter(([, c]) => c.some(([ax, ay]) => ax === x && ay === y)).map(([n]) => n);
     return `(${x}, ${y})　高さ ${M.hgt[y][x]}　地形 ${TNAME[code] || code}${units.length ? '　' + units.join(', ') : ''}${areas.length ? '　エリア: ' + areas.join(', ') : ''}`;
   }
@@ -565,7 +587,13 @@
     if (M.objective.type === 'leader' && !M.units.some(u => u.leader)) msgs.push('勝利条件「敵将撃破」ですが、初期配置に敵将がいません');
     if (M.objective.type === 'defend' && !M.objective.goal.length) msgs.push('勝利条件「拠点防衛」ですが、防衛マスがありません');
     const gateCell = (x, y) => M.gates.some(g => g.y === y && x >= g.x && x < g.x + g.width);
-    const bad = all.filter(u => M.ter[u.y][u.x] === 'w' || gateCell(u.x, u.y));
+    const cellsOf = u => [...Array(sizeOf(u) ** 2)].map((_, q) => [u.x + q % sizeOf(u), u.y + Math.floor(q / sizeOf(u))]);
+    const bad = all.filter(u => cellsOf(u).some(([x, y]) => M.ter[y]?.[x] === 'w' || gateCell(x, y)));
+    const rough = all.filter(u => sizeOf(u) > 1).filter(u => {
+      const hs = cellsOf(u).map(([x, y]) => M.hgt[y]?.[x] ?? 0);
+      return Math.max(...hs) - Math.min(...hs) > 3;
+    });
+    if (rough.length) msgs.push(`大型ユニットの足場の起伏が 3 段を超えています（動けません）: ${rough.map(u => u.name).join(', ')}`);
     if (bad.length) msgs.push(`水上・城門の上にいるユニット: ${bad.map(u => `${u.name}(${u.x},${u.y})`).join(', ')}`);
     for (const g of M.gates) {
       if (g.top <= M.hgt[g.y][g.x] + g.door) msgs.push(`城門(${g.x},${g.y}) の門楼の高さが扉より低くなっています`);

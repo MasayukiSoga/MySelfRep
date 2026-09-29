@@ -366,6 +366,11 @@
       name: 'ウルフ', sprite: 'wolf', hp: 42, mp: 0, atk: 22, def: 6, agi: 16, move: 6, jump: 3, range: [1, 1], wt: 80, type: 'melee',
       pal: { h: '#8a8a96', b: '#5c5c68', k: '#ffcc30' },
     },
+    // 大型ユニット：size×size マスを占有し、tall 段ぶんの高さがある。reachH は近接攻撃が届く高低差
+    golem: {
+      name: 'ゴーレム', sprite: 'golem', size: 4, tall: 7, hp: 360, mp: 0, atk: 40, def: 24, agi: 3,
+      move: 3, jump: 2, range: [1, 2], reachH: 8, wt: 140, type: 'melee',
+    },
     orc: {
       name: 'オーク', sprite: 'fighter', hp: 110, mp: 0, atk: 32, def: 16, agi: 6, move: 3, jump: 1, range: [1, 1], wt: 120, type: 'melee',
       pal: { s: '#7a9a5a', h: '#2a2a2a', k: '#ff4020', a: '#6a5040', b: '#4a3428', c: '#8a2a2a', w: '#a0a0a8' },
@@ -493,8 +498,94 @@
     return Object.fromEntries(Object.entries(p).map(([k, v]) => [k, rgb(v)]));
   }
 
+  // ---------------------------------------------------------------- 大型ユニットの立体スプライト
+  // 直方体の組み合わせ（ボクセル）をタイルと同じ投影・光源で描く。座標は x, y がマス、z が高さの段。
+  // b: [x0, y0, z0, x1, y1, z1]、c: 色の組、upper: 待機アニメで上下する部分、front: 正面にだけ見える飾り（目など）
+  const GOLEM_MODEL = [
+    { b: [0.9, 2.3, 0, 1.8, 3.3, 2.6], c: 'body' },
+    { b: [2.3, 0.9, 0, 3.3, 1.8, 2.6], c: 'body' },
+    { b: [1.0, 1.0, 2.4, 3.0, 3.0, 3.2], c: 'body' },
+    { b: [0.6, 0.6, 3.2, 3.4, 3.4, 5.6], c: 'body', upper: true },
+    { b: [1.0, 3.4, 4.5, 3.0, 3.46, 4.65], c: 'rune', upper: true, front: true },
+    { b: [1.95, 3.4, 3.6, 2.05, 3.46, 4.5], c: 'rune', upper: true, front: true },
+    { b: [3.4, 1.0, 4.5, 3.46, 3.0, 4.65], c: 'rune', upper: true, front: true },
+    { b: [3.4, 1.95, 3.6, 3.46, 2.05, 4.5], c: 'rune', upper: true, front: true },
+    { b: [0.7, 0.7, 5.6, 1.6, 1.5, 5.72], c: 'moss', upper: true },
+    { b: [2.4, 2.8, 5.6, 3.3, 3.3, 5.72], c: 'moss', upper: true },
+    { b: [1.7, 1.7, 5.5, 2.9, 2.9, 6.7], c: 'body', upper: true },
+    { b: [1.95, 2.9, 6.0, 2.25, 3.0, 6.2], c: 'eye', upper: true, front: true },
+    { b: [2.9, 1.95, 6.0, 3.0, 2.25, 6.2], c: 'eye', upper: true, front: true },
+    { b: [1.4, 3.4, 2.0, 2.4, 4.2, 5.4], c: 'body', upper: true },
+    { b: [1.2, 3.3, 1.0, 2.6, 4.5, 2.2], c: 'body', upper: true },
+    { b: [3.4, 1.4, 2.0, 4.2, 2.4, 5.4], c: 'body', upper: true },
+    { b: [3.3, 1.2, 1.0, 4.5, 2.6, 2.2], c: 'body', upper: true },
+  ];
+
+  const GOLEM_PAL = {
+    body: ['#a8a296', '#8a8478', '#66625a'], rune: ['#9af0ff', '#48d8ff', '#30a8d0'],
+    moss: ['#6c9c44', '#4a7430', '#3a5c26'], eye: ['#e0ffff', '#7af8ff', '#50d0e0'],
+  };
+
+  function buildVoxel(model, pal, bob, back) {
+    const proj = (x, y, z) => [(x - y) * 16, (x + y) * 8 - z * HS];
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const { b } of model) {
+      for (const x of [b[0], b[3]]) for (const y of [b[1], b[4]]) for (const z of [b[2], b[5]]) {
+        const [px, py] = proj(x, y, z);
+        x0 = Math.min(x0, px); x1 = Math.max(x1, px); y0 = Math.min(y0, py); y1 = Math.max(y1, py);
+      }
+    }
+    const ax = Math.ceil(-x0) + 3, ay = Math.ceil(-y0) + 4;
+    const w = Math.ceil(x1 - x0) + 7, h = Math.ceil(y1 - y0) + 8;
+    const c = makeCanvas(w, h), g = c.getContext('2d');
+    const face = (pts, col) => {
+      g.fillStyle = col;
+      g.beginPath();
+      pts.forEach(([x, y, z], i) => { const [px, py] = proj(x, y, z); g[i ? 'lineTo' : 'moveTo'](Math.round(px + ax), Math.round(py + ay)); });
+      g.closePath();
+      g.fill();
+    };
+    for (const part of model) {
+      if (back && part.front) continue;
+      const dz = bob && part.upper ? -1 / HS : 0;
+      const [bx0, by0, bz0, bx1, by1, bz1] = part.b, z0 = bz0 + dz, z1 = bz1 + dz;
+      const [top, left, right] = pal[part.c];
+      face([[bx0, by0, z1], [bx1, by0, z1], [bx1, by1, z1], [bx0, by1, z1]], top);
+      face([[bx0, by1, z1], [bx1, by1, z1], [bx1, by1, z0], [bx0, by1, z0]], left);
+      face([[bx1, by0, z1], [bx1, by1, z1], [bx1, by1, z0], [bx1, by0, z0]], right);
+    }
+    // 仕上げ：アンチエイリアスを落としてドット化し、石の質感のむらと 1px の輪郭を付ける
+    const img = g.getImageData(0, 0, w, h), d = img.data, solid = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) {
+      if (d[i * 4 + 3] < 110) { d[i * 4 + 3] = 0; continue; }
+      solid[i] = 1;
+      const a = d[i * 4 + 3] / 255, n = hash(i % w, Math.floor(i / w), 7);
+      const f = n < 0.14 ? -0.14 : n > 0.9 ? 0.08 : 0;
+      for (let k = 0; k < 3; k++) d[i * 4 + k] = clamp(Math.round(d[i * 4 + k] / a * (1 + f)), 0, 255);
+      d[i * 4 + 3] = 255;
+    }
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        if (solid[i]) continue;
+        const edge = (x > 0 && solid[i - 1]) || (x < w - 1 && solid[i + 1]) || (y > 0 && solid[i - w]) || (y < h - 1 && solid[i + w]);
+        if (edge) { d[i * 4] = 26; d[i * 4 + 1] = 20; d[i * 4 + 2] = 24; d[i * 4 + 3] = 255; }
+      }
+    }
+    g.putImageData(img, 0, 0);
+    c.ax = ax;
+    c.ay = ay;
+    return c;
+  }
+
   // 向き 4 方向 × 待機アニメ 2 フレーム。背面は顔を髪色で塗りつぶして作る
   function buildFrames(u) {
+    if (u.C.sprite === 'golem') {
+      // 左右対称なので向きは正面（目あり）と背面（目なし）だけ
+      const front = [buildVoxel(GOLEM_MODEL, GOLEM_PAL, false, false), buildVoxel(GOLEM_MODEL, GOLEM_PAL, true, false)];
+      const back = [buildVoxel(GOLEM_MODEL, GOLEM_PAL, false, true), buildVoxel(GOLEM_MODEL, GOLEM_PAL, true, true)];
+      return [front, front, back, back];
+    }
     const def = SPRITES[u.C.sprite], pal = paletteFor(u);
     const make = (back, bob) => pixelArt(def.rows, pal, SPR_W, SPR_H, (ch, r) => {
       if (back && r >= def.head[0] && r <= def.head[1] && (ch === 's' || ch === 'k')) ch = 'h';
@@ -506,11 +597,11 @@
   }
 
   function createUnit(r) {
-    const C = CLASSES[r.cls], bonus = (r.lv - 4) * 3;
+    const C = CLASSES[r.cls], bonus = (r.lv - 4) * 3, size = C.size || 1, h0 = footH(r.x, r.y, size);
     const u = {
-      ...r, C,
+      ...r, C, size,
       maxHp: C.hp + bonus * 2, maxMp: C.mp, atk: C.atk + bonus, def: C.def + bonus, agi: C.agi,
-      rx: r.x, ry: r.y, rh: H(r.x, r.y), gh: H(r.x, r.y),
+      rx: r.x, ry: r.y, rh: h0, gh: h0,
       offX: 0, offY: 0, alpha: 1, blink: false, dead: false, gone: false, moving: false, sortKey: null,
       wt: Math.round(C.wt * (0.2 + Math.random() * 0.6)), anim: Math.random() * 2,
     };
@@ -519,7 +610,23 @@
     u.frames = buildFrames(u);
     return u;
   }
-  const unitAt = (x, y) => units.find(u => !u.dead && u.x === x && u.y === y);
+  // 大型ユニット（size > 1）は (x, y) を左上（奥）の角として size×size マスを占有する
+  const sizeOf = u => u.size || 1;
+  const covers = (u, x, y) => x >= u.x && y >= u.y && x < u.x + sizeOf(u) && y < u.y + sizeOf(u);
+  const unitAt = (x, y) => units.find(u => !u.dead && covers(u, x, y));
+  function footH(x, y, n) {
+    if (n === 1) return tileAt(x, y)?.h ?? 0;
+    let h = 0;
+    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) h = Math.max(h, tileAt(x + i, y + j)?.h ?? 0);
+    return h;
+  }
+  // ユニット（や位置 + 大きさ）同士の最短のマス距離。大型ユニットは体の端から測る
+  function gap(a, b, na = sizeOf(a), nb = sizeOf(b)) {
+    const dx = Math.max(0, a.x - (b.x + nb - 1), b.x - (a.x + na - 1));
+    const dy = Math.max(0, a.y - (b.y + nb - 1), b.y - (a.y + na - 1));
+    return dx + dy;
+  }
+  const centerOf = (u, p = u) => ({ x: p.x + (sizeOf(u) - 1) / 2, y: p.y + (sizeOf(u) - 1) / 2 });
   const gateAt = (x, y) => gates.find(g => !g.dead && g.tiles.some(t => t.x === x && t.y === y));
   const targetAt = (x, y) => unitAt(x, y) || gateAt(x, y);
 
@@ -530,8 +637,45 @@
     return dy > 0 ? 1 : 3;
   }
 
+  // 大型ユニットが (x, y) に立てるならその足場の高さを返す。全マスが通行可能・他ユニットなし・起伏 3 段以内
+  function bigSpot(u, x, y) {
+    const n = sizeOf(u);
+    let lo = Infinity, hi = -Infinity;
+    for (let j = 0; j < n; j++) {
+      for (let i = 0; i < n; i++) {
+        const t = tileAt(x + i, y + j);
+        if (!t || TERRAIN[t.type].blocked) return null;
+        const o = unitAt(t.x, t.y);
+        if (o && o !== u) return null;
+        lo = Math.min(lo, t.h);
+        hi = Math.max(hi, t.h);
+      }
+    }
+    return hi - lo > 3 ? null : hi;
+  }
+
+  function computeReachBig(u) {
+    const start = { x: u.x, y: u.y, c: 0, prev: null, h: footH(u.x, u.y, sizeOf(u)) };
+    const reach = new Map([[key(u.x, u.y), start]]), q = [start];
+    while (q.length) {
+      const cur = q.shift();
+      if (cur.c >= u.C.move + (u.moveBonus || 0)) continue;
+      for (const [dx, dy] of DIRS) {
+        const nx = cur.x + dx, ny = cur.y + dy, k = key(nx, ny);
+        if (reach.has(k)) continue;
+        const h = bigSpot(u, nx, ny);
+        if (h == null || Math.abs(h - cur.h) > u.C.jump) continue;
+        const node = { x: nx, y: ny, c: cur.c + 1, prev: key(cur.x, cur.y), h };
+        reach.set(k, node);
+        q.push(node);
+      }
+    }
+    return reach;
+  }
+
   // 高さ差は ±jump まで。敵ユニットはすり抜けられない
   function computeReach(u) {
+    if (sizeOf(u) > 1) return computeReachBig(u);
     const reach = new Map([[key(u.x, u.y), { x: u.x, y: u.y, c: 0, prev: null }]]);
     const q = [reach.get(key(u.x, u.y))];
     while (q.length) {
@@ -550,7 +694,8 @@
     }
     return reach;
   }
-  const stopTiles = (u, reach) => [...reach.values()].filter(s => { const o = unitAt(s.x, s.y); return !o || o === u; });
+  const stopTiles = (u, reach) => sizeOf(u) > 1 ? [...reach.values()]
+    : [...reach.values()].filter(s => { const o = unitAt(s.x, s.y); return !o || o === u; });
   function pathTo(reach, dest) {
     const path = [];
     for (let n = reach.get(key(dest.x, dest.y)); n; n = n.prev && reach.get(n.prev)) path.unshift({ x: n.x, y: n.y });
@@ -560,21 +705,23 @@
   const canAttack = u => u.C.type !== 'magic' || u.mp >= MAGIC_COST;
 
   // 弓は高所から撃つと射程が伸び、近接は高さ差 2 まで
+  // 大型ユニットは体の端から数え、足場の高さは占有マスの最大
   function inRange(u, from, tgt) {
-    const d = Math.abs(from.x - tgt.x) + Math.abs(from.y - tgt.y);
-    const dh = H(from.x, from.y) - H(tgt.x, tgt.y);
+    const n = sizeOf(u);
+    const d = gap(from, tgt, n, 1);
+    const dh = footH(from.x, from.y, n) - H(tgt.x, tgt.y);
     let [mn, mx] = u.C.range;
     if (u.C.type === 'bow') mx += clamp(Math.floor(dh / 2), 0, 2);
     if (d < mn || d > mx) return false;
-    return !(u.C.type === 'melee' && Math.abs(dh) > 2);
+    return !(u.C.type === 'melee' && Math.abs(dh) > (u.C.reachH ?? 2));
   }
   const attackTileSet = (u, from) => new Set(tiles.filter(t => inRange(u, from, t)).map(t => key(t.x, t.y)));
 
   // 高低差と攻撃方向（正面・側面・背面）で命中とダメージが変わる
   // pos: 攻撃するマス（複数マスの城門ではユニット位置と異なる）
   function forecast(att, tgt, from, pos = tgt) {
-    const dh = H(from.x, from.y) - H(pos.x, pos.y);
-    const d = dirToward(pos, from);
+    const dh = footH(from.x, from.y, sizeOf(att)) - H(pos.x, pos.y);
+    const d = dirToward(pos, centerOf(att, from));
     // 城門などの構造物には向きがない（常に正面扱い・必中）
     const rel = tgt.facing == null || d === tgt.facing ? 'front' : d === (tgt.facing + 2) % 4 ? 'back' : 'side';
     const magic = att.C.type === 'magic';
@@ -677,6 +824,44 @@
     }
   }
 
+  // 大型ユニットは画面上で 16px 幅の縦の短冊に分け、各短冊をその列で最も手前の占有マスの直後に描く。
+  // これで巨体の手前にいる小さなユニットや地形が正しく重なる
+  function bigStrips(u) {
+    const n = sizeOf(u), base = u.sortKey ?? u.x + u.y, out = [];
+    for (let m = -n; m < n; m++) {
+      let depth = -1;
+      for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) if (i - j === m || i - j === m + 1) depth = Math.max(depth, i + j);
+      out.push({ k: base + depth + 0.5, m, first: m === -n, last: m === n - 1 });
+    }
+    return out;
+  }
+
+  function drawBigStrip(u, st, ox, oy, now) {
+    if (u.blink && Math.floor(now / 50) % 2) return;
+    const fr = Math.floor(now / (u.moving ? 180 : 600) + u.anim) % 2;
+    const c = u.frames[u.facing][fr];
+    // 奥の角のマスの上端の頂点がモデル原点
+    const gx = Math.round((u.rx - u.ry) * 16 + ox + u.offX), gy = Math.round((u.rx + u.ry) * 8 - u.rh * HS + oy + u.offY);
+    const left = gx - c.ax, top = gy - c.ay;
+    const sx0 = st.first ? 0 : clamp(c.ax + st.m * 16, 0, c.width), sx1 = st.last ? c.width : clamp(c.ax + (st.m + 1) * 16, 0, c.width);
+    if (sx1 <= sx0) return;
+    ctx.globalAlpha = u.alpha * (u.ghost ? 0.45 : 1);
+    ctx.drawImage(c, sx0, 0, sx1 - sx0, c.height, left + sx0, top, sx1 - sx0, c.height);
+    ctx.globalAlpha = 1;
+  }
+
+  // 巨体の後ろにカーソルがあると見えないので半透明にする
+  function updateGhost(u, ox, oy) {
+    u.ghost = false;
+    if (!cursorVisible()) return;
+    const { x, y } = state.cursor;
+    if (covers(u, x, y) || x + y >= u.x + u.y + 2 * (sizeOf(u) - 1)) return;
+    const c = u.frames[u.facing][0];
+    const gx = (u.rx - u.ry) * 16 + ox, gy = (u.rx + u.ry) * 8 - u.rh * HS + oy;
+    const [cx, cy] = toScreen(x, y, topH(x, y));
+    u.ghost = cx >= gx - c.ax && cx < gx - c.ax + c.width && cy >= gy - c.ay && cy < gy - c.ay + c.height - 8;
+  }
+
   function drawUnit(u, ox, oy, now) {
     const gx = Math.round((u.rx - u.ry) * 16 + ox);
     const gy = Math.round((u.rx + u.ry) * 8 + 8 + oy);
@@ -765,14 +950,16 @@
     const follow = speed() > 1 ? 0.4 : 0.14;
     cam.x += (clamp(tx, bounds.x0, bounds.x1) - cam.x) * follow;
     cam.y += (clamp(ty, bounds.y0, bounds.y1) - cam.y) * follow;
-    const ox = Math.round(VW / 2 - cam.x), oy = Math.round(VH / 2 - 4 - cam.y);
+    const shake = state.shake > now ? Math.round((Math.random() - 0.5) * 4) : 0;
+    const ox = Math.round(VW / 2 - cam.x) + shake, oy = Math.round(VH / 2 - 4 - cam.y) + shake;
     state.ox = ox; state.oy = oy;
 
     // 透過判定の対象：ユニットの足元とカーソル位置（画面座標 + 描画順キー）
     const focus = [];
     for (const u of units) {
       if (u.gone) continue;
-      focus.push({ k: (u.sortKey ?? u.x + u.y) + 0.5, x: (u.rx - u.ry) * 16 + ox, y: (u.rx + u.ry) * 8 + 8 - u.rh * HS + oy });
+      const n = sizeOf(u) - 1;
+      focus.push({ k: (u.sortKey ?? u.x + u.y) + n + 0.5, x: (u.rx - u.ry) * 16 + ox, y: (u.rx + u.ry + n) * 8 + 8 - u.rh * HS + oy });
     }
     if (cursorVisible()) {
       const { x, y } = state.cursor, [cx, cy] = toScreen(x, y, topH(x, y));
@@ -781,10 +968,22 @@
 
     // 奥（x+y が小さい）から手前へ描く画家のアルゴリズム。ユニットは自分の足元のタイルの直後に描く
     const list = drawOrder.map(t => ({ k: t.x + t.y, t }));
-    for (const u of units) if (!u.gone) list.push({ k: (u.sortKey ?? u.x + u.y) + 0.5, u });
+    for (const u of units) {
+      if (u.gone) continue;
+      if (sizeOf(u) > 1) {
+        updateGhost(u, ox, oy);
+        for (const st of bigStrips(u)) list.push({ k: st.k, u, st });
+      } else {
+        list.push({ k: (u.sortKey ?? u.x + u.y) + 0.5, u });
+      }
+    }
     list.sort((a, b) => a.k - b.k);
     const pulse = 0.55 + 0.3 * Math.sin(now / 170);
-    for (const e of list) e.t ? drawTile(e.t, ox, oy, now, pulse, focus) : drawUnit(e.u, ox, oy, now);
+    for (const e of list) {
+      if (e.t) drawTile(e.t, ox, oy, now, pulse, focus);
+      else if (e.st) drawBigStrip(e.u, e.st, ox, oy, now);
+      else drawUnit(e.u, ox, oy, now);
+    }
 
     drawEffects(now);
     drawPopups(now);
@@ -793,7 +992,8 @@
       const { x, y } = state.cursor;
       const [cx, cy] = toScreen(x, y, topH(x, y));
       const bob = Math.round(Math.abs(Math.sin(now / 160)) * 3);
-      ctx.drawImage(ARROW, cx - 4, cy - (unitAt(x, y) ? 32 : 18) - bob);
+      const cu = unitAt(x, y);
+      ctx.drawImage(ARROW, cx - 4, cy - (!cu ? 18 : sizeOf(cu) > 1 ? 16 + cu.C.tall * HS : 32) - bob);
     }
   }
 
@@ -927,10 +1127,11 @@
   }
 
   // 増援：指定位置が塞がっていれば近くの空きマスに出現する
-  function freeSpotNear(x, y) {
+  function freeSpotNear(x, y, n = 1) {
     let best = null, bestD = Infinity;
     for (const t of tiles) {
-      if (TERRAIN[t.type].blocked || targetAt(t.x, t.y)) continue;
+      if (n > 1 ? bigSpot({ size: n }, t.x, t.y) == null || gates.some(g => !g.dead && g.tiles.some(gt => covers({ x: t.x, y: t.y, size: n }, gt.x, gt.y)))
+        : TERRAIN[t.type].blocked || targetAt(t.x, t.y)) continue;
       const d = Math.abs(t.x - x) + Math.abs(t.y - y);
       if (d < bestD) { bestD = d; best = t; }
     }
@@ -941,7 +1142,7 @@
     w.done = true;
     const spawned = [];
     for (const r of w.units) {
-      const spot = freeSpotNear(r.x, r.y);
+      const spot = freeSpotNear(r.x, r.y, CLASSES[r.cls].size || 1);
       if (!spot) continue;
       const u = createUnit({ ...r, x: spot.x, y: spot.y });
       u.alpha = 0;
@@ -1010,7 +1211,7 @@
     state.camUnit = u;
     u.moving = true;
     for (let i = 1; i < path.length; i++) {
-      const a = path[i - 1], b = path[i], h0 = H(a.x, a.y), h1 = H(b.x, b.y);
+      const a = path[i - 1], b = path[i], h0 = footH(a.x, a.y, sizeOf(u)), h1 = footH(b.x, b.y, sizeOf(u));
       u.facing = dirToward(a, b);
       u.sortKey = Math.max(a.x + a.y, b.x + b.y);
       await tween(h0 === h1 ? 150 : 240, p => {
@@ -1022,7 +1223,7 @@
       u.x = b.x;
       u.y = b.y;
     }
-    u.rx = u.x; u.ry = u.y; u.rh = u.gh = H(u.x, u.y);
+    u.rx = u.x; u.ry = u.y; u.rh = u.gh = footH(u.x, u.y, sizeOf(u));
     u.sortKey = null;
     u.moving = false;
     state.camUnit = null;
@@ -1033,17 +1234,18 @@
   async function doAttack(a, t, pos = t) {
     const fc = forecast(a, t, a, pos);
     const type = a.C.type;
-    a.facing = dirToward(a, pos);
+    a.facing = dirToward(centerOf(a), pos);
     state.hint = `${a.name}の${type === 'magic' ? 'ファイア' : type === 'bow' ? '射撃' : '攻撃'}！`;
     setCursor(pos.x, pos.y);
     if (type === 'magic') a.mp -= MAGIC_COST;
     // 城門は扉の中ほどを狙う
     const at = [pos.x, pos.y, t.isObject ? H(pos.x, pos.y) + 2 : H(pos.x, pos.y)];
-    const [ax, ay] = worldPos(a.x, a.y, H(a.x, a.y)), [tx, ty] = worldPos(pos.x, pos.y, at[2]);
+    const ac = centerOf(a), [ax, ay] = worldPos(ac.x, ac.y, footH(a.x, a.y, sizeOf(a))), [tx, ty] = worldPos(pos.x, pos.y, at[2]);
+    const lunge = sizeOf(a) > 1 ? 12 : 6;
     const len = Math.hypot(tx - ax, ty - ay) || 1, nx = (tx - ax) / len, ny = (ty - ay) / len;
 
     if (type === 'melee') {
-      await tween(110, p => { a.offX = nx * 6 * p; a.offY = ny * 6 * p; });
+      await tween(110, p => { a.offX = nx * lunge * p; a.offY = ny * lunge * p; });
     } else if (type === 'bow') {
       await tween(140, p => { a.offX = -nx * 2 * p; a.offY = -ny * 2 * p; });
       a.offX = a.offY = 0;
@@ -1075,7 +1277,8 @@
       await tween(200, p => { t.offX = nx * 5 * Math.sin(p * Math.PI); });
       t.offX = 0;
     }
-    if (type === 'melee') await tween(140, p => { a.offX = nx * 6 * (1 - p); a.offY = ny * 6 * (1 - p); });
+    if (sizeOf(a) > 1) state.shake = performance.now() + 350;   // 巨体の一撃で画面が揺れる
+    if (type === 'melee') await tween(140, p => { a.offX = nx * lunge * (1 - p); a.offY = ny * lunge * (1 - p); });
     a.offX = a.offY = 0;
     updateHUD();
     await wait(450);
@@ -1181,7 +1384,7 @@
     const reach = state.moved || P.stay ? here : computeReach(u);
     const leader = P.approach === 'leader' && units.find(v => v.leader && v.team === u.team && v !== u && !v.dead);
     let stops = stopTiles(u, reach);
-    if (leader) stops = stops.filter(s => manhattan(s, leader) <= P.leash || (s.x === u.x && s.y === u.y));
+    if (leader) stops = stops.filter(s => gap(s, leader, sizeOf(u)) <= P.leash || (s.x === u.x && s.y === u.y));
     const foes = units.filter(v => !v.dead && v.team !== u.team);
     const threat = P.danger ? threatMap(u) : new Map();
     const danger = s => {
@@ -1196,7 +1399,7 @@
     let best = null;
     if (!state.acted && P.attack && canAttack(u)) {
       for (const s of stops) {
-        const nearest = foes.length ? Math.min(...foes.map(f => manhattan(f, s))) : 0;
+        const nearest = foes.length ? Math.min(...foes.map(f => gap(f, s, sizeOf(f), sizeOf(u)))) : 0;
         for (const { t, pos } of targets) {
           if (!inRange(u, s, pos)) continue;
           const fc = forecast(u, t, s, pos);
@@ -1227,15 +1430,23 @@
     if (u.dead || state.phase === 'over') return;
     const alive = foes.filter(f => !f.dead);
     if (alive.length) {
-      const near = alive.reduce((a, b) => manhattan(a, u) <= manhattan(b, u) ? a : b);
+      const near = alive.reduce((a, b) => gap(a, u) <= gap(b, u) ? a : b);
+      const dir = dirToward(centerOf(u), centerOf(near));
       // 逃走中は相手に背を向ける
-      u.facing = P.approach === 'away' ? (dirToward(u, near) + 2) % 4 : dirToward(u, near);
+      u.facing = P.approach === 'away' ? (dir + 2) % 4 : dir;
     }
     await wait(250);
   }
 
   // 攻撃しないときの移動先。地形上の距離（高低差・通行不可を考慮）で目標に近づく／離れる
   function chooseMove(u, P, stops, foes, targets, leader, threat) {
+    const n = sizeOf(u);
+    // 大型ユニットは占有マスのうち目標に最も近いマスで測る
+    const at = (dist, s, miss) => {
+      let best = Infinity;
+      for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) best = Math.min(best, dist.get(key(s.x + i, s.y + j)) ?? miss);
+      return best;
+    };
     const risk = s => {
       const t = threat.get(key(s.x, s.y)) || 0;
       return t >= u.hp ? 12 : t / u.maxHp * 2 * (P.danger ? 1 : 0);
@@ -1243,19 +1454,19 @@
     if (P.approach === 'away') {
       // 相手からの距離が最大のマスへ（届かないマスは十分遠いとみなす）
       const dist = terrainDist(u, foes);
-      const far = s => Math.min(dist.get(key(s.x, s.y)) ?? 30, 30) - risk(s);
+      const far = s => Math.min(at(dist, s, 30), 30) - risk(s);
       return stops.reduce((a, b) => far(b) > far(a) ? b : a, u);
     }
     let goals;
     if (P.approach === 'goal') goals = [...state.goal].map(k => { const [x, y] = k.split(',').map(Number); return { x, y }; });
     else if (P.approach === 'area') goals = areaTiles(u.aiArea);
     else if (P.approach === 'leader') {
-      if (leader && manhattan(u, leader) <= P.leash) return null;   // 将のそばにいれば動かない
+      if (leader && gap(u, leader) <= P.leash) return null;   // 将のそばにいれば動かない
       goals = leader ? [leader] : targets.map(({ pos }) => pos);
     } else goals = targets.map(({ pos }) => pos);
     if (!goals.length) return null;
     const dist = terrainDist(u, goals);
-    const cost = s => (dist.get(key(s.x, s.y)) ?? Infinity) + risk(s);
+    const cost = s => at(dist, s, Infinity) + risk(s);
     return stops.reduce((a, b) => cost(b) < cost(a) ? b : a, u);
   }
 
@@ -1282,10 +1493,10 @@
       case 'escaped': return selectUnits(c.unit).some(u => u.escaped);
       case 'reach': {
         const area = areaTiles(c.area);
-        return us.some(u => area.some(t => t.x === u.x && t.y === u.y));
+        return us.some(u => area.some(t => covers(u, t.x, t.y)));
       }
       case 'hpBelow': return us.some(u => u.hp / u.maxHp < c.value);
-      case 'enemyNear': return us.some(u => units.some(f => !f.dead && f.team !== u.team && manhattan(f, u) <= c.value));
+      case 'enemyNear': return us.some(u => units.some(f => !f.dead && f.team !== u.team && gap(f, u) <= c.value));
       case 'gateBroken': return gates.some(g => g.dead);
       case 'all': return c.of.every(evalCond);
       case 'any': return c.of.some(evalCond);
@@ -1360,7 +1571,7 @@
       const m = state.menuItems[state.menuIndex];
       if (m?.enabled) { hideMenu(); m.act(); }
     } else if (phase === 'look') {
-      if (c.x === u.x && c.y === u.y) openMenu();
+      if (covers(u, c.x, c.y)) openMenu();
     } else if (phase === 'move') {
       if (!state.moveTiles.has(k)) return;
       const path = pathTo(state.reach, c);
@@ -1444,6 +1655,18 @@
     const { ox, oy } = state;
     const alive = units.filter(u => !u.dead).sort((a, b) => (b.x + b.y) - (a.x + a.y));
     for (const u of alive) {
+      if (sizeOf(u) > 1) {
+        // 巨体の上半身をクリックしたら、その真下の列の手前の占有マスを選ぶ
+        const c = u.frames[u.facing][0], n = sizeOf(u);
+        const gx = (u.x - u.y) * 16 + ox, gy = (u.x + u.y) * 8 - u.rh * HS + oy;
+        if (u.ghost || lx < gx - c.ax || lx >= gx - c.ax + c.width || ly < gy - c.ay || ly >= gy) continue;
+        const m = clamp(Math.floor((lx - gx) / 16), -n, n - 1);
+        let pick = null;
+        for (let j = 0; j < n; j++) {
+          for (let i = 0; i < n; i++) if ((i - j === m || i - j === m + 1) && (!pick || i + j > pick[0] + pick[1])) pick = [i, j];
+        }
+        return tileAt(u.x + pick[0], u.y + pick[1]);
+      }
       const [gx, gy] = toScreen(u.x, u.y, H(u.x, u.y));
       if (lx >= gx - 6 && lx < gx + 6 && ly >= gy - 18 && ly < gy) return tileAt(u.x, u.y);
     }

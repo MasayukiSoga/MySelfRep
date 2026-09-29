@@ -11,7 +11,8 @@
 //                  / defend（rounds ラウンドの間、goal のマスに敵を入れない）。どの型でも敵全滅で勝利。
 //           ラウンドは WT の経過 100 ごとに 1 進む（全員がおよそ 1 回ずつ行動する長さ）
 // reinforcements: [{ round, text, units: [...] }] 指定ラウンドに入ると増援が出現
-// units   : team は 'player' / 'enemy'。cls は knight / soldier / archer / wizard / goblin / wolf / orc。
+// units   : team は 'player' / 'enemy'。cls は knight / soldier / archer / wizard / goblin / wolf / orc / golem。
+//           golem は 4×4 マスを占有する大型ユニット。x, y は占有範囲の奥の角（x, y が最小のマス）
 //           id: イベントで参照する名前（省略時は name で参照）
 //           ai: 思考ルーチン。aggressive 突撃 / cautious 慎重 / guard 守備（攻撃できる時だけ動く）/ hold 固守（動かない）
 //               / sniper 狙撃 / hunter 弱者狙い / berserk 激昂 / objective 拠点突破 / escort 護衛（将のそば）
@@ -388,6 +389,84 @@ window.TACTICS_MAPS = [
             { name: 'ザック', cls: 'soldier', team: 'enemy', x: 7, y: 0, lv: 4, hair: '#302018', facing: 1, ai: 'aggressive' },
             { name: 'ユーリ', cls: 'archer', team: 'enemy', x: 8, y: 0, lv: 4, hair: '#c08050', facing: 1, ai: 'sniper' },
           ] },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'colossus',
+    name: '目覚めし巨像',
+    desc: '古代遺跡に眠る石の巨像ゴーレム（4×4 マス）。近づくと目覚め、深手を負うと暴走する。取り巻きの魔物にも注意。',
+    objective: { type: 'leader', text: '石の巨像 ゴーレムの破壊' },
+    height: [
+      '221000000000000122',
+      '110000000000000011',
+      '000004111111400000',
+      '000001111111100000',
+      '000001111111100000',
+      '000001111111100000',
+      '000001111111100000',
+      '000001111111100000',
+      '000001111111100000',
+      '000004111111400000',
+      '000000000000000000',
+      '011000000000000110',
+      '012100000000001210',
+      '011000000000000110',
+      '000000000000000000',
+      '000000000000000000',
+      '000000000000000000',
+      '000000000000000000',
+    ],
+    terrain: [
+      '..................',
+      '..................',
+      '.....WffffffW.....',
+      '.....ffffffff.....',
+      '.....ffffffff.....',
+      '.....ffffffff.....',
+      '.....ffffffff.....',
+      '.....ffffffff.....',
+      '.....ffffffff.....',
+      '.....WffffffW.....',
+      '..................',
+      '..................',
+      '..................',
+      '..................',
+      '..................',
+      '..................',
+      '..................',
+      '..................',
+    ],
+    units: [
+      { name: 'レオン', cls: 'knight', team: 'player', x: 8, y: 15, lv: 5, hair: '#c89040', facing: 3 },
+      { name: 'カイン', cls: 'knight', team: 'player', x: 9, y: 15, lv: 5, hair: '#303848', facing: 3 },
+      { name: 'ガルド', cls: 'soldier', team: 'player', x: 7, y: 15, lv: 5, hair: '#503828', facing: 3 },
+      { name: 'セリカ', cls: 'archer', team: 'player', x: 6, y: 16, lv: 4, hair: '#e8d070', facing: 3 },
+      { name: 'ノア', cls: 'archer', team: 'player', x: 11, y: 16, lv: 4, hair: '#8a5a3a', facing: 3 },
+      { name: 'ミラ', cls: 'wizard', team: 'player', x: 9, y: 16, lv: 4, hair: '#b05a30', facing: 3 },
+      { name: 'エルザ', cls: 'wizard', team: 'player', x: 8, y: 16, lv: 4, hair: '#e0e0f0', facing: 3 },
+      // 大型ユニットの x, y は占有する 4×4 マスの奥の角（x, y が最小のマス）
+      { id: 'golem', name: 'ゴーレム', cls: 'golem', team: 'enemy', x: 7, y: 4, lv: 6, hair: '#000000', facing: 1, leader: true, ai: 'hold' },
+      { name: 'ゴブリン', cls: 'goblin', team: 'enemy', x: 3, y: 3, lv: 4, hair: '#303030', facing: 1 },
+      { name: 'ゴブリン', cls: 'goblin', team: 'enemy', x: 14, y: 3, lv: 4, hair: '#303030', facing: 1 },
+      { name: 'ゴブリン', cls: 'goblin', team: 'enemy', x: 4, y: 10, lv: 4, hair: '#303030', facing: 1 },
+      { name: 'ウルフ', cls: 'wolf', team: 'enemy', x: 13, y: 10, lv: 4, hair: '#303030', facing: 1 },
+    ],
+    events: [
+      {
+        when: { type: 'enemyNear', unit: 'golem', value: 3 },
+        do: [
+          { type: 'message', text: '巨像の瞳に光が灯った…！' },
+          { type: 'setAi', target: 'golem', ai: 'aggressive' },
+        ],
+      },
+      {
+        when: { type: 'hpBelow', unit: 'golem', value: 0.5 },
+        do: [
+          { type: 'message', text: 'ゴーレムが暴走を始めた！' },
+          { type: 'setAi', target: 'golem', ai: 'berserk' },
+          { type: 'buff', target: 'golem', atk: 12, move: 1, label: '暴走' },
         ],
       },
     ],
