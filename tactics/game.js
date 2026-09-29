@@ -233,6 +233,8 @@
     state.goal = new Set((state.objective.goal || []).map(([x, y]) => key(x, y)));
     state.waves = (def.reinforcements || []).map(w => ({ ...w, done: false }));
     state.clock = 0;
+    state.areas = def.areas || {};
+    state.events = (def.events || []).map(e => ({ ...e, fired: false }));
 
     // カメラの可動域（マップ外の空白を映しすぎない）
     const xs = tiles.map(t => (t.x - t.y) * 16), ys = tiles.map(t => (t.x + t.y) * 8 - topH(t.x, t.y) * HS);
@@ -534,7 +536,7 @@
     const q = [reach.get(key(u.x, u.y))];
     while (q.length) {
       const cur = q.shift();
-      if (cur.c >= u.C.move) continue;
+      if (cur.c >= u.C.move + (u.moveBonus || 0)) continue;
       for (const [dx, dy] of DIRS) {
         const nx = cur.x + dx, ny = cur.y + dy, t = tileAt(nx, ny), k = key(nx, ny);
         if (!t || TERRAIN[t.type].blocked || reach.has(k)) continue;
@@ -679,8 +681,9 @@
     const gx = Math.round((u.rx - u.ry) * 16 + ox);
     const gy = Math.round((u.rx + u.ry) * 8 + 8 + oy);
     const bodyY = gy - Math.round(u.rh * HS), groundY = gy - Math.round(u.gh * HS);
-    ctx.globalAlpha = u.alpha * 0.4;
-    ctx.fillStyle = '#000';
+    // 能力上昇中（激昂など）は足元が色付きで明滅する
+    ctx.globalAlpha = u.alpha * (u.aura ? 0.55 + 0.3 * Math.sin(now / 120) : 0.4);
+    ctx.fillStyle = u.aura || '#000';
     ctx.fillRect(gx - 4, groundY - 2, 8, 1);
     ctx.fillRect(gx - 6, groundY - 1, 12, 2);
     ctx.fillRect(gx - 4, groundY + 1, 8, 1);
@@ -829,7 +832,7 @@
         `<div class="row"><span class="nm">${u.name}</span><span class="cl">${u.name === u.C.name ? '' : u.C.name}</span><span class="lv">Lv${u.lv}</span></div>` +
         `<div class="row"><span class="lb">HP</span>${bar(u.hp, u.maxHp)}<span class="num">${u.hp}/${u.maxHp}</span></div>` +
         `<div class="row"><span class="lb">MP</span>${bar(u.mp, u.maxMp, 'mp')}<span class="num">${u.mp}/${u.maxMp}</span></div>` +
-        `<div class="row">WT <b>${u.wt}</b>&nbsp;攻<b>${u.atk}</b>&nbsp;防<b>${u.def}</b>${u.leader ? '&nbsp;<span class="rel">★将</span>' : ''}</div>`;
+        `<div class="row">WT <b>${u.wt}</b>&nbsp;攻<b>${u.atk}</b>&nbsp;防<b>${u.def}</b>${u.status ? `&nbsp;<span class="st">${u.status}</span>` : u.leader ? '&nbsp;<span class="rel">★将</span>' : ''}</div>`;
     }
 
     let info = `<div class="hint">${state.hint}</div>`;
@@ -868,7 +871,9 @@
     for (const v of alive) v.wt -= m;
     state.clock += m;
     for (const w of state.waves) if (!w.done && round() >= w.round) await spawnWave(w);
+    await runEvents();
     if (checkEnd()) return;
+    if (u.dead) { nextTurn(); return; }   // イベントで離脱した
     Object.assign(state, { active: u, moved: false, acted: false, phase: 'busy', turn: state.turn + 1, moveTiles: null, atkTiles: null });
     u.mp = Math.min(u.maxMp, u.mp + 2);
     state.hint = u.team === 'player' ? 'コマンドを選択' : `${u.name}の行動`;
@@ -905,7 +910,8 @@
     const end = (win, msg) => { gameOver(win, msg); return true; };
     if (!units.some(u => u.team === 'player' && !u.dead)) return end(false, '部隊は全滅した…');
     if (o.type === 'defend' && enemies.some(u => state.goal.has(key(u.x, u.y)))) return end(false, '防衛線を突破された…');
-    if (o.type === 'leader' && units.find(u => u.leader)?.dead) return end(true, '敵リーダーを撃破した！');
+    const leader = units.find(u => u.leader && u.team === 'enemy');
+    if (o.type === 'leader' && leader?.dead && !leader.escaped) return end(true, '敵リーダーを撃破した！');
     if ((o.type === 'survive' || o.type === 'defend') && round() > o.rounds) return end(true, `${o.rounds} ラウンドを守り抜いた！`);
     if (!enemies.length && state.waves.every(w => w.done)) return end(true, '敵を全滅させた！');
     return false;
@@ -1021,6 +1027,7 @@
     u.moving = false;
     state.camUnit = null;
     setCursor(u.x, u.y);
+    await runEvents();
   }
 
   async function doAttack(a, t, pos = t) {
@@ -1082,6 +1089,7 @@
       await tween(650, p => { t.alpha = 1 - p; });
       t.gone = true;
     }
+    await runEvents();
   }
 
   // 城門は瓦礫のマスに置き換わり、通行できるようになる
@@ -1134,33 +1142,68 @@
     return threat;
   }
 
-  // 敵とオートバトル中の味方が共通で使う AI。移動済み・行動済みの状態から途中で引き継ぐこともできる
+  // ---------------------------------------------------------------- 思考ルーチン
+  // ユニットごとに u.ai で選ぶ。イベントの setAi で戦闘中に切り替えられる。
+  //   attack   : 攻撃するか          approach : 攻撃できないときの移動先
+  //                                    foes=相手 / goal=防衛マス / leader=味方の将 / area=指定エリア / away=相手から離れる
+  //   danger   : 危険なマスを嫌う度合い（倒されうるマスは強く避ける）
+  //   keepAway : 射手が相手と距離を取る重み   preferWeak : 弱った相手を狙う重み   killBonus : とどめを刺す重み
+  //   stay     : その場から動かない   leash : approach=leader のとき将から離れてよい距離
+  const AI_PROFILES = {
+    aggressive: { name: '突撃', attack: true, approach: 'foes' },
+    cautious: { name: '慎重', attack: true, approach: 'foes', danger: 0.4 },
+    guard: { name: '守備', attack: true, approach: null },
+    hold: { name: '固守', attack: true, approach: null, stay: true },
+    sniper: { name: '狙撃', attack: true, approach: 'foes', keepAway: 4, danger: 0.2 },
+    hunter: { name: '弱者狙い', attack: true, approach: 'foes', preferWeak: 40, killBonus: 90 },
+    berserk: { name: '激昂', attack: true, approach: 'foes', preferWeak: 15, killBonus: 80, keepAway: 0 },
+    objective: { name: '拠点突破', attack: true, approach: 'goal' },
+    escort: { name: '護衛', attack: true, approach: 'leader', leash: 2 },
+    goto: { name: '移動', attack: false, approach: 'area' },
+    flee: { name: '逃走', attack: false, approach: 'away', danger: 1 },
+  };
+
+  // 指定がなければ従来どおり：味方（オート）は慎重、敵将は守備、防衛戦の敵は拠点突破、それ以外は突撃
+  function aiOf(u) {
+    if (u.ai && AI_PROFILES[u.ai]) return u.ai;
+    if (u.team === 'player') return 'cautious';
+    if (u.leader) return 'guard';
+    return state.objective.type === 'defend' ? 'objective' : 'aggressive';
+  }
+
+  const areaTiles = a => (Array.isArray(a) ? a : state.areas[a] || []).map(([x, y]) => ({ x, y }));
+  const manhattan = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+
   async function aiTurn(u) {
+    const P = AI_PROFILES[aiOf(u)];
     await wait(300);
-    const reach = state.moved ? new Map([[key(u.x, u.y), { x: u.x, y: u.y, c: 0, prev: null }]]) : computeReach(u);
-    const stops = stopTiles(u, reach);
+    const here = new Map([[key(u.x, u.y), { x: u.x, y: u.y, c: 0, prev: null }]]);
+    const reach = state.moved || P.stay ? here : computeReach(u);
+    const leader = P.approach === 'leader' && units.find(v => v.leader && v.team === u.team && v !== u && !v.dead);
+    let stops = stopTiles(u, reach);
+    if (leader) stops = stops.filter(s => manhattan(s, leader) <= P.leash || (s.x === u.x && s.y === u.y));
     const foes = units.filter(v => !v.dead && v.team !== u.team);
-    // 味方は危険なマスを避ける（敵は恐れず突撃する）
-    const threat = u.team === 'player' ? threatMap(u) : new Map();
+    const threat = P.danger ? threatMap(u) : new Map();
     const danger = s => {
       const t = threat.get(key(s.x, s.y)) || 0;
       return t >= u.hp ? t * 2 : t;
     };
-    // 攻撃対象：敵ユニットと、味方から見た城門の各マス
+    // 攻撃対象：相手ユニットと、味方から見た城門の各マス
     const targets = foes.map(f => ({ t: f, pos: f }));
     if (u.team === 'player') {
       for (const g of gates) if (!g.dead) for (const gt of g.tiles) targets.push({ t: g, pos: gt });
     }
     let best = null;
-    if (!state.acted && canAttack(u)) {
+    if (!state.acted && P.attack && canAttack(u)) {
       for (const s of stops) {
-        const nearest = foes.length ? Math.min(...foes.map(f => Math.abs(f.x - s.x) + Math.abs(f.y - s.y))) : 0;
+        const nearest = foes.length ? Math.min(...foes.map(f => manhattan(f, s))) : 0;
         for (const { t, pos } of targets) {
           if (!inRange(u, s, pos)) continue;
           const fc = forecast(u, t, s, pos);
-          let score = fc.dmg * fc.hit / 100 + (fc.dmg >= t.hp && !t.isObject ? 60 : 0) - s.c * 0.3 - danger(s) * 0.4;
-          if (t.isObject) score *= 0.6;                  // 城門より兵を優先
-          if (u.C.type !== 'melee') score += nearest * 2; // 射手は距離を取る
+          let score = fc.dmg * fc.hit / 100 - s.c * 0.3 - danger(s) * (P.danger || 0);
+          if (!t.isObject) score += (fc.dmg >= t.hp ? P.killBonus ?? 60 : 0) + (P.preferWeak || 0) * (1 - t.hp / t.maxHp);
+          else score *= 0.6;                                              // 城門より兵を優先
+          if (u.C.type !== 'melee') score += nearest * (P.keepAway ?? 2); // 射手は距離を取る
           if (!best || score > best.score) best = { s, t, pos, score };
         }
       }
@@ -1169,39 +1212,144 @@
       if (best.s.x !== u.x || best.s.y !== u.y) {
         await moveAlong(u, pathTo(reach, best.s));
         state.moved = true;
+        if (u.dead || state.phase === 'over') return;
       }
       await wait(200);
       await doAttack(u, best.t, best.pos);
       state.acted = true;
-    } else if (!u.leader && !state.moved) {
-      // 攻撃できなければ地形上の距離で最も近い相手へ寄る（敵リーダーは陣地を守る）。
-      // 防衛戦の敵は拠点を、味方は敵か城門を目指す
-      const goals = u.team === 'enemy' && state.objective.type === 'defend'
-        ? [...state.goal].map(k => { const [x, y] = k.split(',').map(Number); return { x, y }; })
-        : targets.map(({ pos }) => pos);
-      const dist = terrainDist(u, goals);
-      // 倒されうるマスは強く避け、それ以外の危険は少しだけ嫌う（慎重すぎると陣地戦で膠着する）
-      const cost = s => {
-        const t = threat.get(key(s.x, s.y)) || 0;
-        return (dist.get(key(s.x, s.y)) ?? Infinity) + (t >= u.hp ? 12 : t / u.maxHp * 2);
-      };
-      let dest = null, bestD = cost(u);
-      for (const s of stops) {
-        const d = cost(s);
-        if (d < bestD) { bestD = d; dest = s; }
-      }
+    } else if (!state.moved && P.approach) {
+      const dest = chooseMove(u, P, stops, foes, targets, leader, threat);
       if (dest && (dest.x !== u.x || dest.y !== u.y)) {
         await moveAlong(u, pathTo(reach, dest));
         state.moved = true;
       }
     }
+    if (u.dead || state.phase === 'over') return;
     const alive = foes.filter(f => !f.dead);
     if (alive.length) {
-      const near = alive.reduce((a, b) =>
-        Math.abs(a.x - u.x) + Math.abs(a.y - u.y) <= Math.abs(b.x - u.x) + Math.abs(b.y - u.y) ? a : b);
-      u.facing = dirToward(u, near);
+      const near = alive.reduce((a, b) => manhattan(a, u) <= manhattan(b, u) ? a : b);
+      // 逃走中は相手に背を向ける
+      u.facing = P.approach === 'away' ? (dirToward(u, near) + 2) % 4 : dirToward(u, near);
     }
     await wait(250);
+  }
+
+  // 攻撃しないときの移動先。地形上の距離（高低差・通行不可を考慮）で目標に近づく／離れる
+  function chooseMove(u, P, stops, foes, targets, leader, threat) {
+    const risk = s => {
+      const t = threat.get(key(s.x, s.y)) || 0;
+      return t >= u.hp ? 12 : t / u.maxHp * 2 * (P.danger ? 1 : 0);
+    };
+    if (P.approach === 'away') {
+      // 相手からの距離が最大のマスへ（届かないマスは十分遠いとみなす）
+      const dist = terrainDist(u, foes);
+      const far = s => Math.min(dist.get(key(s.x, s.y)) ?? 30, 30) - risk(s);
+      return stops.reduce((a, b) => far(b) > far(a) ? b : a, u);
+    }
+    let goals;
+    if (P.approach === 'goal') goals = [...state.goal].map(k => { const [x, y] = k.split(',').map(Number); return { x, y }; });
+    else if (P.approach === 'area') goals = areaTiles(u.aiArea);
+    else if (P.approach === 'leader') {
+      if (leader && manhattan(u, leader) <= P.leash) return null;   // 将のそばにいれば動かない
+      goals = leader ? [leader] : targets.map(({ pos }) => pos);
+    } else goals = targets.map(({ pos }) => pos);
+    if (!goals.length) return null;
+    const dist = terrainDist(u, goals);
+    const cost = s => (dist.get(key(s.x, s.y)) ?? Infinity) + risk(s);
+    return stops.reduce((a, b) => cost(b) < cost(a) ? b : a, u);
+  }
+
+  // ---------------------------------------------------------------- イベント
+  // maps.js の events: [{ when: 条件, do: [アクション…] }]。各イベントは条件を満たした時点で 1 回だけ起きる。
+  // 判定は移動・攻撃の後とターン開始時。対象の指定は ユニットの id か name、'@enemy' / '@player' / '@all'
+  function selectUnits(sel, except) {
+    if (!sel) return [];
+    const ex = [].concat(except || []);
+    const list = sel[0] === '@'
+      ? units.filter(u => sel === '@all' || u.team === sel.slice(1))
+      : units.filter(u => u.id === sel || u.name === sel);
+    return list.filter(u => !ex.includes(u.id) && !ex.includes(u.name));
+  }
+
+  function evalCond(c) {
+    const us = selectUnits(c.unit).filter(u => !u.dead);
+    switch (c.type) {
+      case 'round': return round() >= c.value;
+      case 'defeated': {
+        const all = selectUnits(c.unit);
+        return all.length > 0 && all.every(u => u.dead && !u.escaped);
+      }
+      case 'escaped': return selectUnits(c.unit).some(u => u.escaped);
+      case 'reach': {
+        const area = areaTiles(c.area);
+        return us.some(u => area.some(t => t.x === u.x && t.y === u.y));
+      }
+      case 'hpBelow': return us.some(u => u.hp / u.maxHp < c.value);
+      case 'enemyNear': return us.some(u => units.some(f => !f.dead && f.team !== u.team && manhattan(f, u) <= c.value));
+      case 'gateBroken': return gates.some(g => g.dead);
+      case 'all': return c.of.every(evalCond);
+      case 'any': return c.of.some(evalCond);
+      default: return false;
+    }
+  }
+
+  async function runEvents() {
+    for (const ev of state.events) {
+      if (ev.fired || state.phase === 'over' || !evalCond(ev.when)) continue;
+      ev.fired = true;
+      for (const a of ev.do) await doAction(a);
+    }
+  }
+
+  async function doAction(a) {
+    const targets = selectUnits(a.target, a.except).filter(u => !u.dead);
+    const focus = targets[0];
+    if (focus) setCursor(focus.x, focus.y);
+    switch (a.type) {
+      case 'message':
+        await showBanner(a.text, a.ms || 1800);
+        break;
+      case 'setAi':
+        for (const u of targets) {
+          u.ai = a.ai;
+          if (a.area) u.aiArea = a.area;
+        }
+        break;
+      case 'buff': {
+        // 能力の上昇（負の値で弱体化）。label は HUD に状態として表示し、aura で足元の色を変える
+        const now = performance.now();
+        for (const u of targets) {
+          u.atk += a.atk || 0;
+          u.def += a.def || 0;
+          u.agi += a.agi || 0;
+          u.moveBonus = (u.moveBonus || 0) + (a.move || 0);
+          if (a.heal) u.hp = Math.min(u.maxHp, u.hp + (a.heal === true ? u.maxHp : a.heal));
+          if (a.label) u.status = a.label;
+          u.aura = a.aura || '#ff3020';
+          effects.push({ kind: 'fire', at: [u.x, u.y, H(u.x, u.y) + 1], t0: now, until: now + 500, cols: ['#fff0c0', '#ff9040', '#ff3020', '#801010'] });
+        }
+        updateHUD();
+        await wait(500);
+        break;
+      }
+      case 'reinforce':
+        await spawnWave({ text: a.text, units: a.units, done: false });
+        break;
+      case 'escape':
+        // 戦場から離脱（撃破扱いにはならない）
+        for (const u of targets) {
+          u.dead = u.escaped = true;
+          await tween(500, p => { u.alpha = 1 - p; });
+          u.gone = true;
+        }
+        if (a.text) await showBanner(a.text, a.ms || 1500);
+        break;
+      case 'win':
+      case 'lose':
+        gameOver(a.type === 'win', a.text || (a.type === 'win' ? '勝利条件を達成した！' : '作戦は失敗した…'));
+        break;
+    }
+    updateHUD();
   }
 
   // ---------------------------------------------------------------- 入力

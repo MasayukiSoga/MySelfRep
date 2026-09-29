@@ -61,6 +61,7 @@
         <button type="button" data-tool="unit">ユニット</button>
         <button type="button" data-tool="gate">城門</button>
         <button type="button" data-tool="goal">防衛マス</button>
+        <button type="button" data-tool="area">エリア</button>
       </div>
 
       <div class="panel" data-panel="height">
@@ -110,7 +111,9 @@
           </label>
           <label><input id="uLeader" type="checkbox"> 敵将</label>
         </div>
-        <p class="note">左クリック: 配置（同じマスは置き換え）。右クリック: 削除。</p>
+        <label>思考ルーチン <select id="uAi"></select></label>
+        <label>ID <input id="uId" type="text" placeholder="イベントで参照する名前（任意）"></label>
+        <p class="note">左クリック: 配置（同じマスは置き換え）。右クリック: 削除。Shift+クリック: そのユニットの設定を読み取る。</p>
       </div>
 
       <div class="panel" data-panel="gate">
@@ -124,6 +127,16 @@
           <label>防御 <input id="gDef" type="number" min="0" max="99" value="16"></label>
         </div>
         <p class="note">左クリック: そのマスから +x 方向へ幅ぶんの城門を置く（扉は +y 側に向く）。右クリック: 削除。</p>
+      </div>
+
+      <div class="panel" data-panel="area">
+        <label>エリア <select id="aSel"></select></label>
+        <div class="row">
+          <input id="aName" type="text" placeholder="新しいエリア名（例: exit）">
+          <button id="btnAddArea" type="button">追加</button>
+        </div>
+        <button id="btnDelArea" type="button">このエリアを削除</button>
+        <p class="note">イベントの条件「到達（reach）」や思考ルーチン「移動（goto）」の行き先に使う名前付きのマスの集まり。左クリック/ドラッグ: 追加、右クリック: 削除。</p>
       </div>
 
       <div class="panel" data-panel="goal">
@@ -144,6 +157,17 @@
     </div>
     <canvas id="grid"></canvas>
     <p class="note" id="status">&nbsp;</p>
+      <section id="eventsBox">
+        <h2>イベント</h2>
+        <p class="note">条件を満たすと 1 回だけ実行される仕掛け（書式は maps.js 先頭のコメント参照）。JSON か maps.js と同じ書き方で記述し、欄から離れると反映。</p>
+        <div class="row">
+          <button type="button" data-example="flee">例: 接近で逃走</button>
+          <button type="button" data-example="rage">例: 撃破で激昂</button>
+          <button type="button" data-example="wave">例: 援軍</button>
+        </div>
+        <textarea id="events" rows="12" spellcheck="false"></textarea>
+        <p class="note" id="eventsErr"></p>
+      </section>
   </section>
 
   <section id="previewWrap">

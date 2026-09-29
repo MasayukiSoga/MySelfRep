@@ -12,6 +12,22 @@
 //           ラウンドは WT の経過 100 ごとに 1 進む（全員がおよそ 1 回ずつ行動する長さ）
 // reinforcements: [{ round, text, units: [...] }] 指定ラウンドに入ると増援が出現
 // units   : team は 'player' / 'enemy'。cls は knight / soldier / archer / wizard / goblin / wolf / orc。
+//           id: イベントで参照する名前（省略時は name で参照）
+//           ai: 思考ルーチン。aggressive 突撃 / cautious 慎重 / guard 守備（攻撃できる時だけ動く）/ hold 固守（動かない）
+//               / sniper 狙撃 / hunter 弱者狙い / berserk 激昂 / objective 拠点突破 / escort 護衛（将のそば）
+//               / goto 移動（aiArea のエリアへ、攻撃しない）/ flee 逃走（相手から離れる）
+//               省略時: 味方 cautious、敵将 guard、防衛戦の敵 objective、他の敵 aggressive
+// areas   : { 名前: [[x, y], …] } 名前付きエリア。イベント条件 reach や goto の行き先に使う
+// events  : [{ when: 条件, do: [アクション…] }] 条件を満たした時点で 1 回だけ実行（移動・攻撃の後とターン開始時に判定）
+//           対象の指定（unit / target）: ユニットの id か name、または '@enemy' / '@player' / '@all'（except で除外）
+//           条件: { type: 'reach', unit, area } 到達 / { type: 'defeated', unit } 撃破（'@enemy' なら全滅）
+//                 / { type: 'escaped', unit } 離脱 / { type: 'hpBelow', unit, value: 0.3 } HP 割合
+//                 / { type: 'enemyNear', unit, value: 4 } 相手が n マス以内 / { type: 'round', value } / { type: 'gateBroken' }
+//                 / { type: 'all' | 'any', of: [条件…] }
+//           アクション: { type: 'message', text } / { type: 'setAi', target, ai, area? } 思考の切り替え
+//                 / { type: 'buff', target, atk, def, agi, move, heal, label, aura } 能力変化（label は状態表示）
+//                 / { type: 'reinforce', text, units } 増援 / { type: 'escape', target, text } 戦場から離脱
+//                 / { type: 'win' | 'lose', text } 勝敗の決定
 //           facing 0:+x(右下) 1:+y(左下) 2:-x(左上) 3:-y(右上)
 window.TACTICS_MAPS = [
   {
@@ -268,6 +284,112 @@ window.TACTICS_MAPS = [
       { name: 'ヘルガ', cls: 'archer', team: 'enemy', x: 2, y: 3, lv: 4, hair: '#d0a060', facing: 0 },
       { name: 'ベイン', cls: 'archer', team: 'enemy', x: 14, y: 3, lv: 4, hair: '#404040', facing: 1 },
       { name: 'モルド', cls: 'wizard', team: 'enemy', x: 13, y: 7, lv: 4, hair: '#a0a0a8', facing: 1 },
+    ],
+  },
+  {
+    id: 'pursuit',
+    name: '敗走する将',
+    desc: '退却を図る敵将ディーノを追撃する。近づくと北の街道へ逃げ出し、逃げ切られると敗北。護衛隊長ガルムを倒すと残りの兵は激昂する。',
+    objective: { type: 'leader', text: '逃げる敵将 ディーノを討て' },
+    height: [
+      '4432100000012344',
+      '4321000000001234',
+      '3210001111000123',
+      '2100012332100012',
+      '1000012332100001',
+      '0000001111000000',
+      '0011000000001100',
+      '0122100000012210',
+      '0011000000001100',
+      '0000000000000000',
+      '1100000110000011',
+      '2210001221000122',
+      '1100000110000011',
+      '0000000000000000',
+      '0000000000000000',
+      '0000000000000000',
+    ],
+    terrain: [
+      '.......dd.......',
+      '.......dd.......',
+      '.......dd.......',
+      '.......dd.......',
+      '.......dd.......',
+      '.......dd.......',
+      '.......dd.......',
+      '.......dd.......',
+      '.......dd.......',
+      '.......dd.......',
+      '.......dd.......',
+      '.......dd.......',
+      '.......dd.......',
+      '.......dd.......',
+      '.......dd.......',
+      '.......dd.......',
+    ],
+    // 名前付きのエリア。イベントの条件や思考ルーチン goto の行き先に使う
+    areas: {
+      exit: [[6, 0], [7, 0], [8, 0], [9, 0]],
+    },
+    units: [
+      { name: 'レオン', cls: 'knight', team: 'player', x: 7, y: 15, lv: 5, hair: '#c89040', facing: 3 },
+      { name: 'カイン', cls: 'knight', team: 'player', x: 8, y: 15, lv: 5, hair: '#303848', facing: 3 },
+      { name: 'ガルド', cls: 'soldier', team: 'player', x: 6, y: 15, lv: 5, hair: '#503828', facing: 3 },
+      { name: 'セリカ', cls: 'archer', team: 'player', x: 4, y: 15, lv: 4, hair: '#e8d070', facing: 3 },
+      { name: 'ノア', cls: 'archer', team: 'player', x: 11, y: 15, lv: 4, hair: '#8a5a3a', facing: 3 },
+      { name: 'ミラ', cls: 'wizard', team: 'player', x: 9, y: 15, lv: 4, hair: '#b05a30', facing: 3 },
+      { id: 'dino', name: 'ディーノ', cls: 'soldier', team: 'enemy', x: 8, y: 10, lv: 5, hair: '#d8c070', facing: 1, leader: true, ai: 'guard' },
+      { id: 'garm', name: 'ガルム', cls: 'knight', team: 'enemy', x: 7, y: 10, lv: 6, hair: '#303030', facing: 1, ai: 'escort' },
+      { name: 'ロイ', cls: 'soldier', team: 'enemy', x: 5, y: 9, lv: 4, hair: '#6a4020', facing: 1, ai: 'escort' },
+      { name: 'ダン', cls: 'soldier', team: 'enemy', x: 10, y: 9, lv: 4, hair: '#403020', facing: 1, ai: 'aggressive' },
+      { name: 'ヘルガ', cls: 'archer', team: 'enemy', x: 2, y: 7, lv: 4, hair: '#d0a060', facing: 1, ai: 'sniper' },
+      { name: 'ベイン', cls: 'archer', team: 'enemy', x: 13, y: 7, lv: 4, hair: '#404040', facing: 1, ai: 'hunter' },
+      { name: 'モルド', cls: 'wizard', team: 'enemy', x: 8, y: 4, lv: 4, hair: '#a0a0a8', facing: 1, ai: 'hold' },
+    ],
+    events: [
+      {
+        // 敵将に 4 マス以内まで迫ると、北の出口へ逃げ始める
+        when: { type: 'enemyNear', unit: 'dino', value: 4 },
+        do: [
+          { type: 'message', text: 'ディーノ「ひ、退け！ 退却だ！」' },
+          { type: 'setAi', target: 'dino', ai: 'goto', area: 'exit' },
+        ],
+      },
+      {
+        // 出口に着いたら離脱して敗北
+        when: { type: 'reach', unit: 'dino', area: 'exit' },
+        do: [
+          { type: 'escape', target: 'dino', text: 'ディーノは戦場から逃げ去った…' },
+          { type: 'lose', text: '敵将に逃げられた…' },
+        ],
+      },
+      {
+        // 護衛隊長が倒れると、敵将以外の全員が激昂して攻撃的になり、能力も上がる
+        when: { type: 'defeated', unit: 'garm' },
+        do: [
+          { type: 'message', text: '「隊長の仇だ！」 敵兵が激昂した！' },
+          { type: 'setAi', target: '@enemy', except: 'dino', ai: 'berserk' },
+          { type: 'buff', target: '@enemy', except: 'dino', atk: 8, agi: 3, move: 1, label: '激昂' },
+        ],
+      },
+      {
+        // 敵将が深手を負うと、出口を忘れてとにかく逃げ回る
+        when: { type: 'hpBelow', unit: 'dino', value: 0.35 },
+        do: [
+          { type: 'message', text: 'ディーノ「く、来るな！ 来るなぁっ！」' },
+          { type: 'setAi', target: 'dino', ai: 'flee' },
+        ],
+      },
+      {
+        // 3 ラウンド目に街道から援軍が到着
+        when: { type: 'round', value: 3 },
+        do: [
+          { type: 'reinforce', text: '敵の援軍が街道から現れた！', units: [
+            { name: 'ザック', cls: 'soldier', team: 'enemy', x: 7, y: 0, lv: 4, hair: '#302018', facing: 1, ai: 'aggressive' },
+            { name: 'ユーリ', cls: 'archer', team: 'enemy', x: 8, y: 0, lv: 4, hair: '#c08050', facing: 1, ai: 'sniper' },
+          ] },
+        ],
+      },
     ],
   },
 ];

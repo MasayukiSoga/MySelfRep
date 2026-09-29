@@ -30,6 +30,13 @@
   ];
   const CLS = Object.fromEntries(CLASSES.map(([id, name, mark]) => [id, { name, mark }]));
   const MONSTER = new Set(['goblin', 'wolf', 'orc']);
+  // game.js の AI_PROFILES と対応
+  const AIS = [
+    ['', '自動（陣営・役割から決定）'], ['aggressive', '突撃'], ['cautious', '慎重'], ['guard', '守備（攻撃できる時だけ動く）'],
+    ['hold', '固守（動かない）'], ['sniper', '狙撃'], ['hunter', '弱者狙い'], ['berserk', '激昂'], ['objective', '拠点突破'],
+    ['escort', '護衛（将のそば）'], ['goto', '移動（エリアへ・攻撃しない）'], ['flee', '逃走'],
+  ];
+  const AI_IDS = new Set(AIS.map(a => a[0]).filter(Boolean));
   const HAIRS = ['#c89040', '#503828', '#e8d070', '#b05a30', '#303848', '#8a5a3a', '#a0a0a8', '#6a4020', '#d0a060', '#404040'];
 
   // ------------------------------------------------------------ モデル
@@ -49,6 +56,8 @@
       gates: (def.gates || []).map(g => ({ width: 1, top: 8, door: 5, hp: 100, def: 12, ...g })),
       units: (def.units || []).map(u => ({ ...u })),
       waves: (def.reinforcements || []).map(w => ({ round: w.round, text: w.text || '', units: (w.units || []).map(u => ({ ...u })) })),
+      areas: JSON.parse(JSON.stringify(def.areas || {})),
+      events: JSON.parse(JSON.stringify(def.events || [])),
     };
   }
 
@@ -60,8 +69,10 @@
   }
 
   const cleanUnit = u => {
-    const c = { name: u.name, cls: u.cls, team: u.team, x: u.x, y: u.y, lv: u.lv, hair: u.hair, facing: u.facing };
+    const c = u.id ? { id: u.id } : {};
+    Object.assign(c, { name: u.name, cls: u.cls, team: u.team, x: u.x, y: u.y, lv: u.lv, hair: u.hair, facing: u.facing });
     if (u.leader) c.leader = true;
+    if (u.ai) c.ai = u.ai;
     return c;
   };
 
@@ -89,15 +100,20 @@
     if (M.gates.length) d.gates = M.gates.map(g => ({ x: g.x, y: g.y, width: g.width, top: g.top, door: g.door, hp: g.hp, def: g.def }));
     d.units = M.units.map(cleanUnit);
     if (M.waves.length) d.reinforcements = M.waves.map(w => ({ round: w.round, text: w.text, units: w.units.map(cleanUnit) }));
+    const areas = Object.entries(M.areas).filter(([, cells]) => cells.length);
+    if (areas.length) d.areas = Object.fromEntries(areas);
+    if (M.events.length) d.events = M.events;
     return d;
   }
 
   function lit(v) {
     if (typeof v === 'string') return `'${v.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
     if (Array.isArray(v)) return '[' + v.map(lit).join(', ') + ']';
-    if (v && typeof v === 'object') return '{ ' + Object.entries(v).map(([k, x]) => `${k}: ${lit(x)}`).join(', ') + ' }';
+    if (v && typeof v === 'object') return '{ ' + Object.entries(v).map(([k, x]) => `${litKey(k)}: ${lit(x)}`).join(', ') + ' }';
     return String(v);
   }
+
+  const litKey = k => /^[\p{L}_$][\p{L}\p{N}_$]*$/u.test(k) ? k : lit(k);
 
   function toCode(d) {
     const L = ['{', `  id: ${lit(d.id)},`, `  name: ${lit(d.name)},`, `  desc: ${lit(d.desc)},`, `  objective: ${lit(d.objective)},`];
@@ -112,6 +128,8 @@
       }
       L.push('  ],');
     }
+    if (d.areas) L.push('  areas: {', ...Object.entries(d.areas).map(([k, v]) => `    ${litKey(k)}: ${lit(v)},`), '  },');
+    if (d.events) L.push('  events: [', ...d.events.map(e => `    ${lit(e)},`), '  ],');
     L.push('},');
     return L.join('\n');
   }
@@ -175,6 +193,10 @@
     $('oRounds').value = M.objective.rounds;
     $('oRoundsLabel').style.display = ['survive', 'defend'].includes(M.objective.type) ? '' : 'none';
     fillGroups();
+    fillAreas();
+    if (document.activeElement !== $('events')) {
+      $('events').value = M.events.length ? '[\n' + M.events.map(e => '  ' + lit(e)).join(',\n') + '\n]' : '[]';
+    }
   }
 
   $('btnResize').addEventListener('click', () => {
@@ -188,6 +210,7 @@
       for (const w of M.waves) w.units = w.units.filter(inside);
       M.gates = M.gates.filter(g => inside(g) && g.x + g.width <= W);
       M.objective.goal = M.objective.goal.filter(([x, y]) => x < W && y < H);
+      for (const k of Object.keys(M.areas)) M.areas[k] = M.areas[k].filter(([x, y]) => x < W && y < H);
     }, true);
   });
 
@@ -226,6 +249,26 @@
   $('swatches').querySelector('[data-code="g"]').classList.add('on');
 
   $('uCls').innerHTML = CLASSES.map(([id, name]) => `<option value="${id}">${name}</option>`).join('');
+  $('uAi').innerHTML = AIS.map(([id, name]) => `<option value="${id}">${name}</option>`).join('');
+
+  // エリア
+  let areaName = '';
+  function fillAreas() {
+    const names = Object.keys(M.areas);
+    if (!names.includes(areaName)) areaName = names[0] || '';
+    $('aSel').innerHTML = names.length
+      ? names.map(n => `<option value="${n}">${n}（${M.areas[n].length}マス）</option>`).join('')
+      : '<option value="">（エリアなし）</option>';
+    $('aSel').value = areaName;
+  }
+  $('aSel').addEventListener('change', e => { areaName = e.target.value; draw(); });
+  $('btnAddArea').addEventListener('click', () => {
+    const n = $('aName').value.trim();
+    if (!n) return;
+    edit(() => { if (!M.areas[n]) M.areas[n] = []; areaName = n; }, true);
+    $('aName').value = '';
+  });
+  $('btnDelArea').addEventListener('click', () => edit(() => { delete M.areas[areaName]; areaName = ''; }, true));
 
   // 配置先：-1 = 初期配置、0.. = 増援
   let group = -1;
@@ -264,7 +307,7 @@
   };
 
   let stroke = new Set();
-  function apply(x, y, right) {
+  function apply(x, y, right, pickOnly = false) {
     if (x < 0 || y < 0 || x >= M.W || y >= M.H) return;
     if (tool === 'height') {
       if (right) { $('hValue').value = M.hgt[y][x]; return; }
@@ -280,6 +323,15 @@
       for (const [cx, cy] of brushCells(x, y, +$('brushT').value)) M.ter[cy][cx] = right ? '.' : terrainCode;
     } else if (tool === 'unit') {
       const list = unitList(), i = list.findIndex(u => u.x === x && u.y === y);
+      if (pickOnly) {
+        // Shift+クリック：既存ユニットの設定をフォームへ読み取る（変更して置き直す用）
+        const u = list[i];
+        if (u) {
+          $('uTeam').value = u.team; $('uCls').value = u.cls; $('uName').value = u.name; $('uLv').value = u.lv;
+          $('uFacing').value = u.facing; $('uLeader').checked = !!u.leader; $('uAi').value = u.ai || ''; $('uId').value = u.id || '';
+        }
+        return;
+      }
       if (i >= 0) list.splice(i, 1);
       if (right) return;
       const cls = $('uCls').value, team = $('uTeam').value;
@@ -291,6 +343,8 @@
         facing: +$('uFacing').value,
       };
       if (leader) u.leader = true;
+      if ($('uAi').value) u.ai = $('uAi').value;
+      if ($('uId').value.trim()) u.id = $('uId').value.trim();
       list.push(u);
     } else if (tool === 'gate') {
       const hit = M.gates.findIndex(g => g.y === y && x >= g.x && x < g.x + g.width);
@@ -302,6 +356,11 @@
         x, y, width: w, top: clamp(+$('gTop').value || 8, 1, 35), door: clamp(+$('gDoor').value || 5, 1, 30),
         hp: clamp(+$('gHp').value || 100, 1, 999), def: clamp(+$('gDef').value || 0, 0, 99),
       });
+    } else if (tool === 'area') {
+      if (!areaName) { setStatus('先にエリア名を入力して「追加」してください'); return; }
+      const cells = M.areas[areaName], i = cells.findIndex(([ax, ay]) => ax === x && ay === y);
+      if (right && i >= 0) cells.splice(i, 1);
+      if (!right && i < 0) cells.push([x, y]);
     } else if (tool === 'goal') {
       const g = M.objective.goal, i = g.findIndex(([gx, gy]) => gx === x && gy === y);
       if (right && i >= 0) g.splice(i, 1);
@@ -403,6 +462,18 @@
         g2.fillText(h.toString(36), tx, ty + CH / 2 + 0.5);
       }
     }
+    // エリア（選択中は濃く）
+    for (const [name, cells] of Object.entries(M.areas)) {
+      const on = tool === 'area' && name === areaName;
+      for (const [x, y] of cells) {
+        diamond(x, y, 3);
+        g2.setLineDash([3, 2]);
+        g2.strokeStyle = on ? '#40e8ff' : 'rgba(64,232,255,.5)';
+        g2.lineWidth = 2;
+        g2.stroke();
+        g2.setLineDash([]);
+      }
+    }
     // 防衛マス
     for (const [x, y] of M.objective.goal) {
       diamond(x, y, 2);
@@ -450,11 +521,12 @@
     const code = M.ter[y][x];
     const units = [...M.units.filter(u => u.x === x && u.y === y).map(u => `${u.name}`),
       ...M.waves.flatMap(w => w.units.filter(u => u.x === x && u.y === y).map(u => `${u.name}(R${w.round})`))];
-    return `(${x}, ${y})　高さ ${M.hgt[y][x]}　地形 ${TNAME[code] || code}${units.length ? '　' + units.join(', ') : ''}`;
+    const areas = Object.entries(M.areas).filter(([, c]) => c.some(([ax, ay]) => ax === x && ay === y)).map(([n]) => n);
+    return `(${x}, ${y})　高さ ${M.hgt[y][x]}　地形 ${TNAME[code] || code}${units.length ? '　' + units.join(', ') : ''}${areas.length ? '　エリア: ' + areas.join(', ') : ''}`;
   }
 
   let painting = false, strokeBase = '';
-  const dragTools = new Set(['height', 'terrain', 'goal']);
+  const dragTools = new Set(['height', 'terrain', 'goal', 'area']);
   function beginStroke() { strokeBase = lastSnap; stroke = new Set(); }
   function endStroke() {
     if (lastSnap !== strokeBase) { undo.push(strokeBase); redo.length = 0; }
@@ -468,7 +540,7 @@
     cv.setPointerCapture(e.pointerId);
     beginStroke();
     painting = { right: e.button === 2 };
-    apply(c[0], c[1], painting.right);
+    apply(c[0], c[1], painting.right, e.shiftKey);
     changed(tool === 'unit' || tool === 'gate');
   });
   cv.addEventListener('pointermove', e => {
@@ -498,6 +570,27 @@
     for (const g of M.gates) {
       if (g.top <= M.hgt[g.y][g.x] + g.door) msgs.push(`城門(${g.x},${g.y}) の門楼の高さが扉より低くなっています`);
     }
+    // イベントの参照先（ユニット・エリア・思考ルーチン）の確認
+    const known = new Set(all.flatMap(u => [u.id, u.name]).filter(Boolean));
+    for (const ev of M.events) for (const a of ev.do || []) if (a.type === 'reinforce') for (const u of a.units || []) { known.add(u.id); known.add(u.name); }
+    const refs = new Set(), areaRefs = new Set(), aiRefs = new Set();
+    const walkCond = c => { if (!c) return; if (c.unit) refs.add(c.unit); if (typeof c.area === 'string') areaRefs.add(c.area); (c.of || []).forEach(walkCond); };
+    M.events.forEach((ev, i) => {
+      if (!ev.when || !Array.isArray(ev.do)) msgs.push(`イベント${i + 1}: when と do が必要です`);
+      walkCond(ev.when);
+      for (const a of ev.do || []) {
+        if (a.target) refs.add(a.target);
+        [].concat(a.except || []).forEach(x => refs.add(x));
+        if (typeof a.area === 'string') areaRefs.add(a.area);
+        if (a.ai) aiRefs.add(a.ai);
+      }
+    });
+    const missing = [...refs].filter(r => r[0] !== '@' && !known.has(r));
+    if (missing.length) msgs.push(`イベントが参照するユニットが見つかりません: ${missing.join(', ')}`);
+    const noArea = [...areaRefs].filter(a => !M.areas[a]?.length);
+    if (noArea.length) msgs.push(`イベントが参照するエリアがありません: ${noArea.join(', ')}`);
+    const badAi = [...aiRefs, ...all.map(u => u.ai).filter(Boolean)].filter(a => !AI_IDS.has(a));
+    if (badAi.length) msgs.push(`不明な思考ルーチン: ${[...new Set(badAi)].join(', ')}`);
     $('warnings').innerHTML = msgs.length
       ? msgs.map(m => `<li class="ng">⚠ ${m}</li>`).join('')
       : '<li class="ok">✓ 問題なし。テストプレイできます</li>';
@@ -522,6 +615,57 @@
       setStatus(describe([e.data.x, e.data.y]));
     }
   });
+
+  // ------------------------------------------------------------ イベント欄
+  // JSON か maps.js と同じ JS オブジェクト表記を受け付ける（自分のブラウザ内でのみ評価する）
+  function parseLoose(text) {
+    text = text.trim().replace(/[,;]\s*$/, '');
+    try { return JSON.parse(text); } catch {}
+    return new Function(`return (${text});`)();
+  }
+  $('events').addEventListener('change', () => {
+    let evs;
+    try {
+      evs = parseLoose($('events').value || '[]');
+      if (!Array.isArray(evs)) throw new Error('配列 [ … ] で書いてください');
+    } catch (err) {
+      $('eventsErr').textContent = '読み取れません: ' + err.message;
+      return;
+    }
+    $('eventsErr').textContent = '';
+    edit(() => { M.events = evs; });
+  });
+
+  // 例の挿入。敵将（なければ最初の敵）を対象にする
+  const EXAMPLES = {
+    flee: (ref, area) => [
+      { when: { type: 'enemyNear', unit: ref, value: 4 }, do: [
+        { type: 'message', text: `${ref}「退却だ！」` }, { type: 'setAi', target: ref, ai: 'goto', area }] },
+      { when: { type: 'reach', unit: ref, area }, do: [
+        { type: 'escape', target: ref, text: `${ref}は逃げ去った…` }, { type: 'lose', text: '敵将に逃げられた…' }] },
+    ],
+    rage: ref => [
+      { when: { type: 'defeated', unit: ref }, do: [
+        { type: 'message', text: `「${ref}の仇だ！」 敵兵が激昂した！` },
+        { type: 'setAi', target: '@enemy', ai: 'berserk' },
+        { type: 'buff', target: '@enemy', atk: 8, agi: 3, move: 1, label: '激昂' }] },
+    ],
+    wave: () => [
+      { when: { type: 'round', value: 3 }, do: [
+        { type: 'reinforce', text: '敵の援軍が現れた！', units: [
+          { name: 'ソルジャー', cls: 'soldier', team: 'enemy', x: 0, y: 0, lv: 4, hair: '#404040', facing: 1, ai: 'aggressive' }] }] },
+    ],
+  };
+  document.querySelectorAll('[data-example]').forEach(b => b.addEventListener('click', () => {
+    const lead = M.units.find(u => u.leader) || M.units.find(u => u.team === 'enemy');
+    const ref = lead ? lead.id || lead.name : '敵将の名前';
+    let area = Object.keys(M.areas)[0];
+    edit(() => {
+      if (b.dataset.example === 'flee' && !area) { area = 'exit'; M.areas.exit = []; }
+      M.events.push(...EXAMPLES[b.dataset.example](ref, area));
+    }, true);
+    if (b.dataset.example === 'flee' && !M.areas[area].length) setStatus(`エリア「${area}」を作りました。「エリア」ツールで逃げ先のマスを塗ってください`);
+  }));
 
   // ------------------------------------------------------------ 書き出し・テストプレイ・履歴
   $('btnPlay').addEventListener('click', () => {
