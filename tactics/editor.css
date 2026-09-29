@@ -83,3 +83,4 @@ dialog textarea { width: 100%; margin: 8px 0; font-family: ui-monospace, Menlo, 
 #eventsErr { color: #ffb0a8; }
 #eventsBox { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; }
 #eventsBox h2 { font-size: 13px; font-weight: normal; color: var(--accent); }
+#tools label.check span { display: flex; gap: 6px; align-items: center; color: var(--text); }

@@ -242,6 +242,8 @@
     state.goal = new Set((state.objective.goal || []).map(([x, y]) => key(x, y)));
     state.waves = (def.reinforcements || []).map(w => ({ ...w, done: false }));
     state.clock = 0;
+    state.lastAttack = 0;
+    state.zoc = def.rules?.zoc !== false;
     state.areas = def.areas || {};
     state.events = (def.events || []).map(e => ({ ...e, fired: false }));
 
@@ -343,6 +345,7 @@
   const OV_MOVE = makeDiamond([70, 130, 255, 120], [170, 205, 255, 220]);
   const OV_ATK = makeDiamond([255, 60, 50, 160], [255, 170, 160, 220]);
   const OV_CURSOR = makeDiamond([255, 250, 200, 50], [255, 236, 80, 255]);
+  const OV_ZOC = makeDiamond([255, 120, 20, 140], [255, 214, 90, 255]);
   const OV_GOAL = makeDiamond([80, 230, 120, 110], [180, 255, 190, 230]);
 
   const ARROW = pixelArt(
@@ -860,18 +863,52 @@
     return hi - lo > 3 ? null : hi;
   }
 
+  // ---------------------------------------------------------------- ZOC（支配領域）
+  // 相手ユニットに隣接するマスに入ると、その手番の移動はそこで止まる（移動開始マスからは抜け出せる）。
+  // 高度 3 以上の飛行ユニットは ZOC を持たず、受けもしない。大型ユニットは体の周囲すべてが ZOC。
+  // マップの rules: { zoc: false } で無効にできる
+  const zocUnit = u => altOf(u) < 3;
+  function zocOf(e) {
+    const out = new Set(), n = sizeOf(e);
+    for (let j = 0; j < n; j++) {
+      for (let i = 0; i < n; i++) {
+        for (const [dx, dy] of DIRS) {
+          const x = e.x + i + dx, y = e.y + j + dy;
+          if (!covers(e, x, y) && tileAt(x, y)) out.add(key(x, y));
+        }
+      }
+    }
+    return out;
+  }
+  // u の移動を止めるマスの集合
+  function zocSet(u) {
+    const set = new Set();
+    if (!state.zoc || !zocUnit(u)) return set;
+    for (const e of units) {
+      if (e.dead || e.team === u.team || !zocUnit(e)) continue;
+      for (const k of zocOf(e)) set.add(k);
+    }
+    return set;
+  }
+  const inZoc = (zoc, u, x, y) => {
+    const n = sizeOf(u);
+    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) if (zoc.has(key(x + i, y + j))) return true;
+    return false;
+  };
+
   function computeReachBig(u) {
+    const zoc = zocSet(u);
     const start = { x: u.x, y: u.y, c: 0, prev: null, h: footH(u.x, u.y, sizeOf(u)) };
     const reach = new Map([[key(u.x, u.y), start]]), q = [start];
     while (q.length) {
       const cur = q.shift();
-      if (cur.c >= u.C.move + (u.moveBonus || 0)) continue;
+      if (cur.c >= u.C.move + (u.moveBonus || 0) || cur.zoc) continue;
       for (const [dx, dy] of DIRS) {
         const nx = cur.x + dx, ny = cur.y + dy, k = key(nx, ny);
         if (reach.has(k)) continue;
         const o = {}, h = bigSpot(u, nx, ny, o);
         if (h == null || Math.abs(h - cur.h) > u.C.jump) continue;
-        const node = { x: nx, y: ny, c: cur.c + 1, prev: key(cur.x, cur.y), h, pass: o.pass };
+        const node = { x: nx, y: ny, c: cur.c + 1, prev: key(cur.x, cur.y), h, pass: o.pass, zoc: inZoc(zoc, u, nx, ny) };
         reach.set(k, node);
         q.push(node);
       }
@@ -884,17 +921,17 @@
   function computeReach(u) {
     if (sizeOf(u) > 1) return computeReachBig(u);
     const reach = new Map([[key(u.x, u.y), { x: u.x, y: u.y, c: 0, prev: null }]]);
-    const q = [reach.get(key(u.x, u.y))];
+    const q = [reach.get(key(u.x, u.y))], zoc = zocSet(u);
     while (q.length) {
       const cur = q.shift();
-      if (cur.c >= u.C.move + (u.moveBonus || 0)) continue;
+      if (cur.c >= u.C.move + (u.moveBonus || 0) || cur.zoc) continue;
       for (const [dx, dy] of DIRS) {
         const nx = cur.x + dx, ny = cur.y + dy, t = tileAt(nx, ny), k = key(nx, ny);
         if (!t || reach.has(k) || !stepOk(u, cur, t)) continue;
         // 味方の上は通過できる。飛行ユニットは相手の地上ユニットの上も飛び越えられる
         const occ = unitAt(nx, ny);
         if (occ && occ.team !== u.team && !(altOf(u) && !altOf(occ))) continue;
-        const node = { x: nx, y: ny, c: cur.c + 1, prev: key(cur.x, cur.y) };
+        const node = { x: nx, y: ny, c: cur.c + 1, prev: key(cur.x, cur.y), zoc: zoc.has(k) };
         reach.set(k, node);
         q.push(node);
       }
@@ -1016,11 +1053,18 @@
       }
     }
     const k = key(t.x, t.y);
-    const ov = state.phase === 'move' && state.moveTiles?.has(k) ? OV_MOVE
+    const zocStop = state.phase === 'move' && state.moveTiles?.has(k) && state.reach?.get(k)?.zoc;
+    const ov = zocStop ? OV_ZOC : state.phase === 'move' && state.moveTiles?.has(k) ? OV_MOVE
       : state.phase === 'target' && state.atkTiles?.has(k) ? OV_ATK : null;
     if (ov) {
       ctx.globalAlpha = pulse;
       ctx.drawImage(ov, x, y);
+      ctx.globalAlpha = 1;
+    }
+    // ZOC：移動範囲内で止まるマス、またはカーソルを合わせた相手の支配領域を橙で示す
+    if (state.phase !== 'move' && state.zocShow?.has(k)) {
+      ctx.globalAlpha = 0.6 + 0.3 * Math.sin(now / 170);
+      ctx.drawImage(OV_ZOC, x, y);
       ctx.globalAlpha = 1;
     }
     if (state.goal?.has(k)) {
@@ -1236,6 +1280,10 @@
   }
 
   function updateHUD() {
+    // カーソルを合わせた相手の ZOC を表示する（自軍の手番の操作中のみ）
+    const cu = MAP && unitAt(state.cursor.x, state.cursor.y), act = state.active;
+    state.zocShow = state.zoc && cu && act && cu.team !== act.team && act.team === 'player' && zocUnit(cu) && zocUnit(act)
+      && ['menu', 'look', 'target'].includes(state.phase) ? zocOf(cu) : null;
     const { cursor, active } = state;
     const t = tileAt(cursor.x, cursor.y);
     const order = units.filter(u => !u.dead).sort((a, b) => a.wt - b.wt).slice(0, 4);
@@ -1408,7 +1456,8 @@
     state.reach = computeReach(u);
     state.moveTiles = new Set(stopTiles(u, state.reach).map(s => key(s.x, s.y)));
     state.phase = 'move';
-    state.hint = '移動先を選択';
+    state.hint = [...state.reach.values()].some(n => n.zoc && state.moveTiles.has(key(n.x, n.y)))
+      ? '移動先を選択<br><span class="zoc">橙: ZOC で停止</span>' : '移動先を選択';
     updateHUD();
   }
 
@@ -1468,6 +1517,7 @@
   }
 
   async function doAttack(a, t, pos = t) {
+    state.lastAttack = state.clock;
     const fc = forecast(a, t, a, pos);
     const type = a.C.type;
     a.facing = dirToward(centerOf(a), pos);
@@ -1616,7 +1666,9 @@
   const manhattan = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 
   async function aiTurn(u) {
-    const P = AI_PROFILES[aiOf(u)];
+    // 3 ラウンド誰も攻撃していなければ膠着とみなし、味方（オート）は慎重さを捨てて攻め込む
+    const stalled = u.team === 'player' && state.clock - (state.lastAttack ?? 0) > 300;
+    const P = stalled ? { ...AI_PROFILES[aiOf(u)], danger: 0, approach: AI_PROFILES[aiOf(u)].approach || 'foes' } : AI_PROFILES[aiOf(u)];
     await wait(300);
     const here = new Map([[key(u.x, u.y), { x: u.x, y: u.y, c: 0, prev: null }]]);
     const reach = state.moved || P.stay ? here : computeReach(u);

@@ -65,6 +65,7 @@
       units: (def.units || []).map(u => ({ ...u })),
       waves: (def.reinforcements || []).map(w => ({ round: w.round, text: w.text || '', units: (w.units || []).map(u => ({ ...u })) })),
       areas: JSON.parse(JSON.stringify(def.areas || {})),
+      rules: { zoc: def.rules?.zoc !== false },
       events: JSON.parse(JSON.stringify(def.events || [])),
     };
   }
@@ -111,6 +112,7 @@
     const areas = Object.entries(M.areas).filter(([, cells]) => cells.length);
     if (areas.length) d.areas = Object.fromEntries(areas);
     if (M.events.length) d.events = M.events;
+    if (M.rules && !M.rules.zoc) d.rules = { zoc: false };
     return d;
   }
 
@@ -138,6 +140,7 @@
     }
     if (d.areas) L.push('  areas: {', ...Object.entries(d.areas).map(([k, v]) => `    ${litKey(k)}: ${lit(v)},`), '  },');
     if (d.events) L.push('  events: [', ...d.events.map(e => `    ${lit(e)},`), '  ],');
+    if (d.rules) L.push(`  rules: ${lit(d.rules)},`);
     L.push('},');
     return L.join('\n');
   }
@@ -185,6 +188,7 @@
     oText: v => { M.objective.text = v; }, oRounds: v => { M.objective.rounds = clamp(+v || 1, 1, 30); },
     oType: v => { M.objective.type = v; },
   };
+  $('rZoc').addEventListener('change', e => edit(() => { M.rules = { ...M.rules, zoc: e.target.checked }; }));
   for (const [id, set] of Object.entries(fields)) {
     $(id).addEventListener('change', e => edit(() => set(e.target.value), id === 'oType'));
   }
@@ -199,6 +203,7 @@
     $('oText').value = M.objective.text;
     $('oText').placeholder = defaultText();
     $('oRounds').value = M.objective.rounds;
+    $('rZoc').checked = M.rules?.zoc !== false;
     $('oRoundsLabel').style.display = ['survive', 'defend'].includes(M.objective.type) ? '' : 'none';
     fillGroups();
     fillAreas();

@@ -21,6 +21,7 @@
 //               / goto 移動（aiArea のエリアへ、攻撃しない）/ flee 逃走（相手から離れる）
 //               省略時: 味方 cautious、敵将 guard、防衛戦の敵 objective、他の敵 aggressive
 // areas   : { 名前: [[x, y], …] } 名前付きエリア。イベント条件 reach や goto の行き先に使う
+// rules   : { zoc: false } で ZOC（相手に隣接するマスに入ると移動が止まる）を無効にする。既定は有効
 // events  : [{ when: 条件, do: [アクション…] }] 条件を満たした時点で 1 回だけ実行（移動・攻撃の後とターン開始時に判定）
 //           対象の指定（unit / target）: ユニットの id か name、または '@enemy' / '@player' / '@all'（except で除外）
 //           条件: { type: 'reach', unit, area } 到達 / { type: 'defeated', unit } 撃破（'@enemy' なら全滅）
