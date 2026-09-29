@@ -336,10 +336,18 @@
         }
         return;
       }
-      if (i >= 0) list.splice(i, 1);
+      const removed = i >= 0 ? list.splice(i, 1)[0] : null;
       if (right) return;
+      const refuse = msg => { if (removed) list.splice(i, 0, removed); setStatus(msg); };
       const cls = $('uCls').value, team = $('uTeam').value, n = SIZE[cls] || 1;
-      if (x + n > M.W || y + n > M.H) { setStatus(`${CLS[cls].name}は ${n}×${n} マス必要です（クリックしたマスが奥の角）`); return; }
+      if (x + n > M.W || y + n > M.H) { refuse(`${CLS[cls].name}は ${n}×${n} マス必要です（クリックしたマスが奥の角）`); return; }
+      // 1 マス 1 ユニット：別の配置先（初期配置／各増援）のユニットと重なる場所には置けない
+      const cells = [...Array(n * n)].map((_, q) => [x + q % n, y + Math.floor(q / n)]);
+      const groups = [['初期配置', M.units], ...M.waves.map(w => [`増援 R${w.round}`, w.units])].filter(([, l]) => l !== list);
+      for (const [label, l] of groups) {
+        const o = l.find(v => cells.some(([cx, cy]) => covers(v, cx, cy)));
+        if (o) { refuse(`このマスには ${label} の ${o.name} がいます（1 マスに置けるのは 1 ユニットだけ）`); return; }
+      }
       // 大型ユニットは占有範囲に重なるユニットを取り除く
       for (let k = list.length - 1; k >= 0; k--) {
         const o = list[k];
@@ -588,6 +596,13 @@
     if (M.objective.type === 'defend' && !M.objective.goal.length) msgs.push('勝利条件「拠点防衛」ですが、防衛マスがありません');
     const gateCell = (x, y) => M.gates.some(g => g.y === y && x >= g.x && x < g.x + g.width);
     const cellsOf = u => [...Array(sizeOf(u) ** 2)].map((_, q) => [u.x + q % sizeOf(u), u.y + Math.floor(q / sizeOf(u))]);
+    const occ = new Map(), dup = new Set();
+    for (const u of all) for (const [x, y] of cellsOf(u)) {
+      const k = x + ',' + y;
+      if (occ.has(k)) dup.add(`${occ.get(k)}と${u.name}(${x},${y})`);
+      else occ.set(k, u.name);
+    }
+    if (dup.size) msgs.push(`同じマスに複数のユニットがいます: ${[...dup].join(', ')}`);
     const bad = all.filter(u => cellsOf(u).some(([x, y]) => M.ter[y]?.[x] === 'w' || gateCell(x, y)));
     const rough = all.filter(u => sizeOf(u) > 1).filter(u => {
       const hs = cellsOf(u).map(([x, y]) => M.hgt[y]?.[x] ?? 0);

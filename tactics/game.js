@@ -227,7 +227,16 @@
     });
     for (const t of tiles) t.canvas = buildTile(t);
     drawOrder = [...tiles].sort((a, b) => (a.x + a.y) - (b.x + b.y));
-    units = def.units.map(createUnit);
+    units = [];
+    for (const r of def.units) {
+      // 1 マス 1 ユニット：先に置かれたユニットと重なる配置は近くの空きマスへずらす
+      const n = CLASSES[r.cls].size || 1;
+      const clash = units.some(o => [...Array(n * n)].some((_, q) => covers(o, r.x + q % n, r.y + Math.floor(q / n))));
+      const spot = clash ? freeSpotNear(r.x, r.y, n) : null;
+      if (clash) console.warn(`${r.name} の配置 (${r.x}, ${r.y}) は他のユニットと重なるため (${spot?.x}, ${spot?.y}) へずらしました`);
+      if (clash && !spot) continue;
+      units.push(createUnit(spot ? { ...r, x: spot.x, y: spot.y } : r));
+    }
     // 勝利条件: leader（敵将撃破）/ annihilate（全滅）/ survive（N ラウンド耐える）/ defend（N ラウンド拠点を守る）
     state.objective = typeof def.objective === 'string' ? { type: 'leader', text: def.objective } : def.objective;
     state.goal = new Set((state.objective.goal || []).map(([x, y]) => key(x, y)));
@@ -366,10 +375,10 @@
       name: 'ウルフ', sprite: 'wolf', hp: 42, mp: 0, atk: 22, def: 6, agi: 16, move: 6, jump: 3, range: [1, 1], wt: 80, type: 'melee',
       pal: { h: '#8a8a96', b: '#5c5c68', k: '#ffcc30' },
     },
-    // 大型ユニット：size×size マスを占有し、tall 段ぶんの高さがある。reachH は近接攻撃が届く高低差
+    // 大型ユニット：size×size マスを占有し、tall 段ぶんの高さがある（2 段でおよそマスの一辺の長さ）。reachH は近接攻撃が届く高低差
     golem: {
-      name: 'ゴーレム', sprite: 'golem', size: 4, tall: 7, hp: 360, mp: 0, atk: 40, def: 24, agi: 3,
-      move: 3, jump: 2, range: [1, 2], reachH: 8, wt: 140, type: 'melee',
+      name: 'ゴーレム', sprite: 'golem', size: 4, tall: 12, hp: 360, mp: 0, atk: 40, def: 24, agi: 3,
+      move: 3, jump: 2, range: [1, 2], reachH: 12, wt: 140, type: 'melee',
     },
     orc: {
       name: 'オーク', sprite: 'fighter', hp: 110, mp: 0, atk: 32, def: 16, agi: 6, move: 3, jump: 1, range: [1, 1], wt: 120, type: 'melee',
@@ -501,29 +510,50 @@
   // ---------------------------------------------------------------- 大型ユニットの立体スプライト
   // 直方体の組み合わせ（ボクセル）をタイルと同じ投影・光源で描く。座標は x, y がマス、z が高さの段。
   // b: [x0, y0, z0, x1, y1, z1]、c: 色の組、upper: 待機アニメで上下する部分、front: 正面にだけ見える飾り（目など）
+  // 人型の石像。体の正面は画面手前（+x+y の対角線方向）を向く。
+  // part(L, S, a, z0, z1)：L = 横方向の位置（x − y、負が画面左）、S = 前後の位置（x + y、4 が中央）、
+  // a = 一辺の長さ（マス）、z0〜z1 = 高さ（段）。画面上の幅は a × 32px、横位置は L × 16px になる。
+  // 描く順番は奥から手前（脚 → 胴 → 頭 → 腕）
+  const part = (L, S, a, z0, z1, c = 'body', extra = {}) => {
+    const cx = (S + L) / 2, cy = (S - L) / 2, h = a / 2;
+    return { b: [cx - h, cy - h, z0, cx + h, cy + h, z1], c, upper: z0 >= 2.8, ...extra };
+  };
+  const mirror = ([x0, y0, z0, x1, y1, z1]) => [y0, x0, z0, y1, x1, z1];
+  const bothSides = p => [p, { ...p, b: mirror(p.b) }];
   const GOLEM_MODEL = [
-    { b: [0.9, 2.3, 0, 1.8, 3.3, 2.6], c: 'body' },
-    { b: [2.3, 0.9, 0, 3.3, 1.8, 2.6], c: 'body' },
-    { b: [1.0, 1.0, 2.4, 3.0, 3.0, 3.2], c: 'body' },
-    { b: [0.6, 0.6, 3.2, 3.4, 3.4, 5.6], c: 'body', upper: true },
-    { b: [1.0, 3.4, 4.5, 3.0, 3.46, 4.65], c: 'rune', upper: true, front: true },
-    { b: [1.95, 3.4, 3.6, 2.05, 3.46, 4.5], c: 'rune', upper: true, front: true },
-    { b: [3.4, 1.0, 4.5, 3.46, 3.0, 4.65], c: 'rune', upper: true, front: true },
-    { b: [3.4, 1.95, 3.6, 3.46, 2.05, 4.5], c: 'rune', upper: true, front: true },
-    { b: [0.7, 0.7, 5.6, 1.6, 1.5, 5.72], c: 'moss', upper: true },
-    { b: [2.4, 2.8, 5.6, 3.3, 3.3, 5.72], c: 'moss', upper: true },
-    { b: [1.7, 1.7, 5.5, 2.9, 2.9, 6.7], c: 'body', upper: true },
-    { b: [1.95, 2.9, 6.0, 2.25, 3.0, 6.2], c: 'eye', upper: true, front: true },
-    { b: [2.9, 1.95, 6.0, 3.0, 2.25, 6.2], c: 'eye', upper: true, front: true },
-    { b: [1.4, 3.4, 2.0, 2.4, 4.2, 5.4], c: 'body', upper: true },
-    { b: [1.2, 3.3, 1.0, 2.6, 4.5, 2.2], c: 'body', upper: true },
-    { b: [3.4, 1.4, 2.0, 4.2, 2.4, 5.4], c: 'body', upper: true },
-    { b: [3.3, 1.2, 1.0, 4.5, 2.6, 2.2], c: 'body', upper: true },
+    // 脚：足・すね・膝・太もも（胴の中心寄り）
+    ...bothSides(part(-0.85, 4.3, 1.0, 0, 0.6, 'dark')),
+    ...bothSides(part(-0.85, 4.05, 0.75, 0.6, 2.4)),
+    ...bothSides(part(-0.85, 4.15, 0.85, 2.4, 2.9, 'dark')),
+    ...bothSides(part(-0.8, 4.0, 0.9, 2.9, 4.5)),
+    // 腰・くびれ・厚い胸・胸の核とルーン
+    part(0, 4, 1.6, 4.4, 5.3, 'dark', { upper: true }),
+    part(0, 4, 1.1, 5.3, 6.0, 'dark', { upper: true }),
+    part(0, 4, 1.9, 6.0, 8.6, 'body', { upper: true }),
+    { b: [1.25, 2.95, 7.9, 2.55, 3.0, 8.05], c: 'rune', upper: true, front: true },
+    { b: [2.95, 1.25, 7.9, 3.0, 2.55, 8.05], c: 'rune', upper: true, front: true },
+    { b: [1.95, 2.95, 6.4, 2.05, 3.0, 7.9], c: 'rune', upper: true, front: true },
+    { b: [2.95, 1.95, 6.4, 3.0, 2.05, 7.9], c: 'rune', upper: true, front: true },
+    { b: [2.72, 2.72, 7.0, 3.12, 3.12, 7.7], c: 'eye', upper: true, front: true },
+    // 首・頭・眉庇・目
+    part(0, 4, 0.6, 8.6, 9.0, 'dark', { upper: true }),
+    part(0, 4.15, 1.1, 9.0, 10.9, 'body', { upper: true }),
+    { b: [1.525, 2.625, 10.1, 2.625, 2.72, 10.3], c: 'dark', upper: true },
+    { b: [2.625, 1.525, 10.1, 2.72, 2.625, 10.3], c: 'dark', upper: true },
+    ...bothSides({ b: [1.75, 2.625, 9.6, 2.1, 2.7, 9.9], c: 'eye', upper: true, front: true }),
+    // 腕（左 → 右）：二の腕・肩当て・苔・前腕・拳（胸より外側に下げる）
+    ...[0, 1].flatMap(side => [
+      part(-2.3, 4.05, 0.7, 6.2, 8.2, 'body', { upper: true }),
+      part(-2.0, 4.0, 1.05, 8.0, 9.3, 'body', { upper: true }),
+      part(-2.0, 4.0, 0.75, 9.3, 9.4, 'moss', { upper: true }),
+      part(-2.35, 4.3, 0.75, 4.4, 6.3, 'body', { upper: true }),
+      part(-2.4, 4.5, 0.95, 3.2, 4.5, 'dark', { upper: true }),
+    ].map(p => side ? { ...p, b: mirror(p.b) } : p)),
   ];
-
   const GOLEM_PAL = {
-    body: ['#a8a296', '#8a8478', '#66625a'], rune: ['#9af0ff', '#48d8ff', '#30a8d0'],
-    moss: ['#6c9c44', '#4a7430', '#3a5c26'], eye: ['#e0ffff', '#7af8ff', '#50d0e0'],
+    body: ['#aea898', '#8c8678', '#68645a'], dark: ['#8a8478', '#6e695f', '#524e48'],
+    rune: ['#9af0ff', '#48d8ff', '#30a8d0'], moss: ['#6c9c44', '#4a7430', '#3a5c26'],
+    eye: ['#e8ffff', '#7af8ff', '#50d0e0'],
   };
 
   function buildVoxel(model, pal, bob, back) {
@@ -637,16 +667,21 @@
     return dy > 0 ? 1 : 3;
   }
 
-  // 大型ユニットが (x, y) に立てるならその足場の高さを返す。全マスが通行可能・他ユニットなし・起伏 3 段以内
-  function bigSpot(u, x, y) {
+  // 大型ユニットが (x, y) を通れるなら足場の高さを返す（全マス通行可能・起伏 3 段以内・相手ユニットなし）。
+  // 味方がいるマスは通過できるが止まれないので、そのときは pass に true を入れる
+  function bigSpot(u, x, y, out = {}) {
     const n = sizeOf(u);
     let lo = Infinity, hi = -Infinity;
+    out.pass = false;
     for (let j = 0; j < n; j++) {
       for (let i = 0; i < n; i++) {
         const t = tileAt(x + i, y + j);
         if (!t || TERRAIN[t.type].blocked) return null;
         const o = unitAt(t.x, t.y);
-        if (o && o !== u) return null;
+        if (o && o !== u) {
+          if (!u.team || o.team !== u.team) return null;
+          out.pass = true;
+        }
         lo = Math.min(lo, t.h);
         hi = Math.max(hi, t.h);
       }
@@ -663,9 +698,9 @@
       for (const [dx, dy] of DIRS) {
         const nx = cur.x + dx, ny = cur.y + dy, k = key(nx, ny);
         if (reach.has(k)) continue;
-        const h = bigSpot(u, nx, ny);
+        const o = {}, h = bigSpot(u, nx, ny, o);
         if (h == null || Math.abs(h - cur.h) > u.C.jump) continue;
-        const node = { x: nx, y: ny, c: cur.c + 1, prev: key(cur.x, cur.y), h };
+        const node = { x: nx, y: ny, c: cur.c + 1, prev: key(cur.x, cur.y), h, pass: o.pass };
         reach.set(k, node);
         q.push(node);
       }
@@ -673,7 +708,8 @@
     return reach;
   }
 
-  // 高さ差は ±jump まで。敵ユニットはすり抜けられない
+  // 1 マスに置けるのは 1 ユニットだけ。移動中は味方のいるマスを通過できるが、相手ユニットはすり抜けられない。
+  // 高さ差は ±jump まで
   function computeReach(u) {
     if (sizeOf(u) > 1) return computeReachBig(u);
     const reach = new Map([[key(u.x, u.y), { x: u.x, y: u.y, c: 0, prev: null }]]);
@@ -694,7 +730,8 @@
     }
     return reach;
   }
-  const stopTiles = (u, reach) => sizeOf(u) > 1 ? [...reach.values()]
+  // 止まれるマス（通過しただけの味方のマスは除く）
+  const stopTiles = (u, reach) => sizeOf(u) > 1 ? [...reach.values()].filter(s => !s.pass)
     : [...reach.values()].filter(s => { const o = unitAt(s.x, s.y); return !o || o === u; });
   function pathTo(reach, dest) {
     const path = [];
@@ -1224,6 +1261,12 @@
       u.y = b.y;
     }
     u.rx = u.x; u.ry = u.y; u.rh = u.gh = footH(u.x, u.y, sizeOf(u));
+    // 1 マス 1 ユニットの規則が崩れていないか（開発時の確認用）
+    const n = sizeOf(u);
+    for (let q = 0; q < n * n; q++) {
+      const o = units.find(v => v !== u && !v.dead && covers(v, u.x + q % n, u.y + Math.floor(q / n)));
+      if (o) console.error(`重なり: ${u.name} と ${o.name} が (${u.x + q % n}, ${u.y + Math.floor(q / n)}) に`);
+    }
     u.sortKey = null;
     u.moving = false;
     state.camUnit = null;
