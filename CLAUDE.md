@@ -24,8 +24,8 @@ Phaser 3 + TypeScript turn-based strategy prototype (Sangokushi / Nobunaga's Amb
 A second page, `roster.html` (entry `src/roster.ts`, scene `src/scenes/RosterScene.ts`), is a demo of procedural portraits for a large cast (30,000 characters). Vite builds both pages via `build.rollupOptions.input` in `vite.config.ts`.
 
 - `src/portrait/rng.ts` — seeded PRNG (mulberry32); everything generated from a seed is deterministic.
-- `src/portrait/portrait.ts` — `traitsFor(seed, age)` picks face parts; `drawPortrait` composites them with Canvas 2D in a 100x100 coordinate space scaled to any size (no image assets).
+- `src/portrait/portrait.ts` — anime-style procedural portraits. `traitsFor(seed, age, archetype)` picks parts; `drawPortrait` composites them with Canvas 2D in a 100x100 coordinate space scaled to any size (no image assets). The four archetypes (`rugged`/`cool` male, `cute`/`beauty` female) drive face shape, eye spec (`EYES`), brows, hair styles, clothing and background. Draw order matters: back hair → body → face → eyes/mouth → front hair (drawn twice: once offset and clipped to the face as its cast shadow) → headgear → brows (drawn last so they show through bangs).
 - `src/portrait/PortraitCache.ts` — generates a portrait into a Phaser canvas texture on first use and keeps at most `maxSize` textures, evicting least-recently-used ones with `textures.remove`. Only request textures for what is on screen; the cap must stay larger than one screen's worth or visible textures get evicted.
-- `src/roster/characters.ts` — deterministic character data (name, age, stats, portrait seed) generated per id.
+- `src/roster/characters.ts` — deterministic character data (name, gender, age, stats, archetype, portrait seed) generated per id; archetype is derived from gender, age and the war/intelligence balance.
 
 To add a new command: add the mutation method to `GameState`, then wire a button for it in `MainScene.drawCommandButtons()`.

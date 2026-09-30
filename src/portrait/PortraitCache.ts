@@ -1,9 +1,10 @@
 import Phaser from 'phaser';
-import { drawPortrait, traitsFor } from './portrait';
+import { drawPortrait, traitsFor, type Archetype } from './portrait';
 
 export interface PortraitSubject {
   id: number;
   age: number;
+  archetype: Archetype;
   portraitSeed: number;
 }
 
@@ -35,7 +36,7 @@ export class PortraitCache {
     }
 
     const texture = this.textures.createCanvas(key, size, size)!;
-    drawPortrait(texture.context, size, traitsFor(subject.portraitSeed, subject.age));
+    drawPortrait(texture.context, size, traitsFor(subject.portraitSeed, subject.age, subject.archetype));
     texture.refresh();
 
     this.lru.set(key, true);

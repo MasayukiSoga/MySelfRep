@@ -1,21 +1,36 @@
 import Phaser from 'phaser';
 import { generateCharacters, type Character } from '../roster/characters';
 import { PortraitCache } from '../portrait/PortraitCache';
+import { ARCHETYPE_LABEL, type Archetype } from '../portrait/portrait';
 
 const CHARACTER_COUNT = 30_000;
 const COLS = 6;
 const ROWS = 4;
 const PER_PAGE = COLS * ROWS;
 const CELL_W = 150;
-const CELL_H = 130;
+const CELL_H = 128;
 const GRID_X = 30;
-const GRID_Y = 62;
+const GRID_Y = 86;
 const THUMB = 80;
 const DETAIL = 240;
 const CACHE_LIMIT = 120;
+const BUTTON = 0x2563eb;
+const BUTTON_ACTIVE = 0xd97706;
+
+type Filter = 'all' | Archetype;
+const FILTERS: [Filter, string][] = [
+  ['all', '全員'],
+  ['rugged', ARCHETYPE_LABEL.rugged],
+  ['cool', ARCHETYPE_LABEL.cool],
+  ['cute', ARCHETYPE_LABEL.cute],
+  ['beauty', ARCHETYPE_LABEL.beauty],
+];
 
 export class RosterScene extends Phaser.Scene {
+  private allCharacters: Character[] = [];
   private characters: Character[] = [];
+  private filter: Filter = 'all';
+  private filterButtons = new Map<Filter, Phaser.GameObjects.Rectangle>();
   private portraits!: PortraitCache;
   private page = 0;
   private generateMs = 0;
@@ -36,7 +51,8 @@ export class RosterScene extends Phaser.Scene {
 
   create(): void {
     const t0 = performance.now();
-    this.characters = generateCharacters(CHARACTER_COUNT);
+    this.allCharacters = generateCharacters(CHARACTER_COUNT);
+    this.characters = this.allCharacters;
     this.generateMs = performance.now() - t0;
     this.portraits = new PortraitCache(this.textures, CACHE_LIMIT);
 
@@ -48,12 +64,33 @@ export class RosterScene extends Phaser.Scene {
     nav.forEach(([label, delta], i) => this.makeButton(560 + i * 70, 14, 62, 30, label, () => this.goTo(this.page + delta)));
     this.makeButton(845, 14, 90, 30, 'ランダム', () => this.goTo(Math.floor(Math.random() * this.pageCount)));
 
+    FILTERS.forEach(([filter, label], i) => {
+      const bg = this.makeButton(30 + i * 100, 50, 92, 26, label, () => this.setFilter(filter));
+      this.filterButtons.set(filter, bg);
+    });
+    this.highlightFilter();
+
     this.input.keyboard?.on('keydown-LEFT', () => this.goTo(this.page - 1));
     this.input.keyboard?.on('keydown-RIGHT', () => this.goTo(this.page + 1));
 
     this.pageLayer = this.add.container();
     this.detailLayer = this.add.container().setDepth(10);
     this.renderPage();
+  }
+
+  private setFilter(filter: Filter): void {
+    if (filter === this.filter) return;
+    this.filter = filter;
+    this.characters = filter === 'all' ? this.allCharacters : this.allCharacters.filter((c) => c.archetype === filter);
+    this.page = 0;
+    this.highlightFilter();
+    this.renderPage();
+  }
+
+  private highlightFilter(): void {
+    for (const [filter, bg] of this.filterButtons) {
+      bg.setData('base', filter === this.filter ? BUTTON_ACTIVE : BUTTON).setFillStyle(bg.getData('base'));
+    }
   }
 
   private goTo(page: number): void {
@@ -89,7 +126,7 @@ export class RosterScene extends Phaser.Scene {
     });
 
     this.lastPageMs = performance.now() - t0;
-    this.pageText.setText(`${this.page + 1}/${this.pageCount}頁  No.${start + 1}〜${start + visible.length}`);
+    this.pageText.setText(`${this.page + 1}/${this.pageCount}頁  該当${this.characters.length.toLocaleString()}人`);
     this.updateStats();
   }
 
@@ -106,7 +143,8 @@ export class RosterScene extends Phaser.Scene {
       [
         c.name,
         '',
-        `No.${c.id + 1}  年齢 ${c.age}`,
+        `No.${c.id + 1}  ${c.female ? '女' : '男'}  年齢 ${c.age}`,
+        `風貌 ${ARCHETYPE_LABEL[c.archetype]}`,
         `統率 ${c.leadership}`,
         `武力 ${c.war}`,
         `知力 ${c.intelligence}`,
@@ -129,11 +167,13 @@ export class RosterScene extends Phaser.Scene {
     );
   }
 
-  private makeButton(x: number, y: number, w: number, h: number, label: string, onClick: () => void): void {
-    const bg = this.add.rectangle(x, y, w, h, 0x2563eb).setOrigin(0, 0).setInteractive({ useHandCursor: true });
+  private makeButton(x: number, y: number, w: number, h: number, label: string, onClick: () => void): Phaser.GameObjects.Rectangle {
+    const bg = this.add.rectangle(x, y, w, h, BUTTON).setOrigin(0, 0).setInteractive({ useHandCursor: true });
+    bg.setData('base', BUTTON);
     this.add.text(x + w / 2, y + h / 2, label, { fontSize: '14px', color: '#f8fafc' }).setOrigin(0.5);
     bg.on('pointerover', () => bg.setFillStyle(0x1d4ed8));
-    bg.on('pointerout', () => bg.setFillStyle(0x2563eb));
+    bg.on('pointerout', () => bg.setFillStyle(bg.getData('base')));
     bg.on('pointerdown', onClick);
+    return bg;
   }
 }
