@@ -21,4 +21,11 @@ Phaser 3 + TypeScript turn-based strategy prototype (Sangokushi / Nobunaga's Amb
 - `src/scenes/MainScene.ts` — the single Phaser scene. Renders the province map and a side panel (info + command buttons + event log) from `GameState`, and forwards clicks back into `GameState` methods. Province circle colors are updated in place each `refresh()` since ownership changes at runtime.
 - `src/main.ts` — Phaser game bootstrap (960x640 canvas mounted into `#app`).
 
+A second page, `roster.html` (entry `src/roster.ts`, scene `src/scenes/RosterScene.ts`), is a demo of procedural portraits for a large cast (30,000 characters). Vite builds both pages via `build.rollupOptions.input` in `vite.config.ts`.
+
+- `src/portrait/rng.ts` — seeded PRNG (mulberry32); everything generated from a seed is deterministic.
+- `src/portrait/portrait.ts` — `traitsFor(seed, age)` picks face parts; `drawPortrait` composites them with Canvas 2D in a 100x100 coordinate space scaled to any size (no image assets).
+- `src/portrait/PortraitCache.ts` — generates a portrait into a Phaser canvas texture on first use and keeps at most `maxSize` textures, evicting least-recently-used ones with `textures.remove`. Only request textures for what is on screen; the cap must stay larger than one screen's worth or visible textures get evicted.
+- `src/roster/characters.ts` — deterministic character data (name, age, stats, portrait seed) generated per id.
+
 To add a new command: add the mutation method to `GameState`, then wire a button for it in `MainScene.drawCommandButtons()`.
