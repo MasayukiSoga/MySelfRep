@@ -5,6 +5,7 @@
 // terrain : 1 文字 = 1 マスの地形。'.' は高さと周囲から自動（草原・荒れ地・岩場・水辺の砂地）。
 //           g 草原 / d 荒れ地 / r 岩場 / s 砂地 / w 川・堀（通行不可）
 //           f 石畳 / W 城壁・石壁 / R 絨毯 / b 木橋 / x 瓦礫 / G 城門の床（gates と併用）
+//           L 溶岩（上で止まると地上は最大 HP の 80%、飛行中は 30% の被害。fireRes のユニットは無傷）
 // gates   : 壊せる城門。{ x, y, width（x 方向のマス数）, top（門楼の上端の高さ）, door（床から扉の上端までの段数）, hp, def }
 // objective: { type, text, rounds?, goal? }
 //           type = leader（leader: true の敵を倒す）/ annihilate（全滅）/ survive（rounds ラウンド耐える）
@@ -22,13 +23,18 @@
 //               省略時: 味方 cautious、敵将 guard、防衛戦の敵 objective、他の敵 aggressive
 // areas   : { 名前: [[x, y], …] } 名前付きエリア。イベント条件 reach や goto の行き先に使う
 // rules   : { zoc: false } で ZOC（相手に隣接するマスに入ると移動が止まる）を無効にする。既定は有効
+//           { ceiling: 6 } 天井の高さ（地形と同じ段）。飛行ユニットは天井 − 足場 − 1 までしか上がれず、
+//           クラスの minFly に届かないと飛べない（ガルーダは地上でほぼ動けない置物になる）。
+//           { ceilingAreas: { エリア名: 高さ } } でエリアごとの天井（吹き抜けなど）
+// bg      : 背景 'night'（既定）/ 'cave'（洞窟）/ 'sky'（高空）
 // events  : [{ when: 条件, do: [アクション…] }] 条件を満たした時点で 1 回だけ実行（移動・攻撃の後とターン開始時に判定）
 //           対象の指定（unit / target）: ユニットの id か name、または '@enemy' / '@player' / '@all'（except で除外）
 //           条件: { type: 'reach', unit, area } 到達 / { type: 'defeated', unit } 撃破（'@enemy' なら全滅）
 //                 / { type: 'escaped', unit } 離脱 / { type: 'hpBelow', unit, value: 0.3 } HP 割合
 //                 / { type: 'enemyNear', unit, value: 4 } 相手が n マス以内 / { type: 'round', value } / { type: 'gateBroken' }
 //                 / { type: 'all' | 'any', of: [条件…] }
-//           アクション: { type: 'message', text } / { type: 'setAi', target, ai, area? } 思考の切り替え
+//           アクション: { type: 'ceiling', value, text } 天井の高さを変える（省略で天井なし）
+//                 / { type: 'message', text } / { type: 'setAi', target, ai, area? } 思考の切り替え
 //                 / { type: 'buff', target, atk, def, agi, move, heal, label, aura } 能力変化（label は状態表示）
 //                 / { type: 'reinforce', text, units } 増援 / { type: 'escape', target, text } 戦場から離脱
 //                 / { type: 'win' | 'lose', text } 勝敗の決定
@@ -531,6 +537,77 @@ window.TACTICS_MAPS = [
       { name: 'ガルーダ', cls: 'garuda', team: 'enemy', x: 11, y: 4, lv: 5, hair: '#000000', facing: 2 },
       { name: 'グリフォン', cls: 'griffon', team: 'enemy', x: 12, y: 9, lv: 4, hair: '#000000', facing: 2 },
       { name: 'ペガサス', cls: 'pegasus', team: 'enemy', x: 11, y: 11, lv: 4, hair: '#000000', facing: 2 },
+    ],
+  },
+  {
+    id: 'lava',
+    name: '灼熱の洞窟',
+    desc: '天井の低い溶岩洞。ガルーダは翼を広げられず地上で動けない（溶岩には強い）。ペガサスやグリフォンも低空飛行になる。溶岩の上で止まると大やけど。5 ラウンド目に何かが起きる…',
+    objective: { type: 'leader', text: 'オークの頭目 ボルガの撃破' },
+    bg: 'cave',
+    // 天井の高さは 6（高さ 6 の岩柱は天井まで届く）。中央の島の上は吹き抜け
+    rules: { ceiling: 6, ceilingAreas: { skylight: 99 } },
+    areas: { skylight: [[9, 7], [9, 8], [10, 8]] },
+    height: [
+      '11111111111111111111',
+      '11111111111221111111',
+      '11111116111111122111',
+      '11611111111116112111',
+      '11111111111111111161',
+      '11111111111111111111',
+      '00001111111111111111',
+      '00001000021111111111',
+      '11111000022000011111',
+      '11111111110000010000',
+      '16111111111111110000',
+      '11111111111111111111',
+      '11122111611161111111',
+      '11121111111111111611',
+      '11111111111111111111',
+      '11111111111111111111',
+    ],
+    terrain: [
+      '....................',
+      '....................',
+      '.......r............',
+      '..r..........r......',
+      '..................r.',
+      '....................',
+      'LLLLr...............',
+      'LLLLrLLLLd..........',
+      '.....LLLLddLLLL.....',
+      '..........LLLLLrLLLL',
+      '.r.............rLLLL',
+      '....................',
+      '........r...r.......',
+      '.................r..',
+      '....................',
+      '....................',
+    ],
+    units: [
+      { name: 'レオン', cls: 'knight', team: 'player', x: 3, y: 14, lv: 5, hair: '#c89040', facing: 3 },
+      { name: 'ガルド', cls: 'soldier', team: 'player', x: 5, y: 14, lv: 5, hair: '#503828', facing: 3 },
+      { name: 'セリカ', cls: 'archer', team: 'player', x: 2, y: 13, lv: 4, hair: '#e8d070', facing: 3 },
+      { name: 'ミラ', cls: 'wizard', team: 'player', x: 4, y: 15, lv: 4, hair: '#b05a30', facing: 3 },
+      { name: 'シエル', cls: 'pegasusKnight', team: 'player', x: 6, y: 13, lv: 5, hair: '#e0c0f0', facing: 3 },
+      { name: 'ルーク', cls: 'griffonRider', team: 'player', x: 6, y: 15, lv: 5, hair: '#5a3a2a', facing: 3 },
+      { name: 'ヴァルナ', cls: 'garuda', team: 'player', x: 3, y: 11, lv: 6, hair: '#000000', facing: 3, id: 'varuna' },
+      { name: 'ボルガ', cls: 'orc', team: 'enemy', x: 16, y: 2, lv: 6, hair: '#000000', facing: 1, leader: true },
+      { name: 'オーク', cls: 'orc', team: 'enemy', x: 14, y: 4, lv: 4, hair: '#000000', facing: 1 },
+      { name: 'ゴブリン', cls: 'goblin', team: 'enemy', x: 11, y: 3, lv: 4, hair: '#000000', facing: 1 },
+      { name: 'ゴブリン', cls: 'goblin', team: 'enemy', x: 17, y: 6, lv: 4, hair: '#000000', facing: 1 },
+      { name: 'ゴブリン', cls: 'goblin', team: 'enemy', x: 12, y: 5, lv: 4, hair: '#000000', facing: 1 },
+      { name: 'ウルフ', cls: 'wolf', team: 'enemy', x: 9, y: 4, lv: 4, hair: '#000000', facing: 1 },
+      { name: 'ウルフ', cls: 'wolf', team: 'enemy', x: 18, y: 8, lv: 4, hair: '#000000', facing: 1 },
+    ],
+    events: [
+      {
+        when: { type: 'round', value: 5 },
+        do: [
+          { type: 'ceiling', value: 99, text: '轟音とともに天井が崩れ落ち、空が開けた！' },
+          { type: 'message', text: 'ヴァルナ「……ようやく翼を広げられる」' },
+        ],
+      },
     ],
   },
 ];

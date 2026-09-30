@@ -143,6 +143,13 @@
       topFx: (c, ux, uy) => near(ux * 2, 0.07) && near(uy * 2, 0.3) || near(uy * 2, 0.07) && near(ux * 2, 0.3) ? [214, 170, 70] : c,
       sideFx: (c, px, k) => brickFx(c, px, k),
     },
+    lava: {
+      name: '溶岩',
+      top: ['#e05010', '#c83808', '#f07018', '#b02804'],
+      left: ['#5a2a1a', '#4e2416', '#643020'], right: ['#3e1c12', '#36180e', '#46201a'],
+      topFx: (c, ux, uy) => near(ux * 2 + uy, 0.08) ? [255, 190, 60] : c,
+      hazard: 'lava',
+    },
     rubble: {
       name: '瓦礫',
       top: ['#8a8680', '#6e6a64', '#a09a90', '#7a6a58'],
@@ -170,7 +177,7 @@
   // マップデータの地形文字。'.' は高さと周囲から自動で決める
   const TERRAIN_CODES = {
     g: 'grass', d: 'dirt', r: 'stone', s: 'sand', w: 'water',
-    f: 'floor', W: 'brick', b: 'bridge', x: 'rubble', G: 'floor', R: 'carpet',
+    f: 'floor', W: 'brick', b: 'bridge', x: 'rubble', G: 'floor', R: 'carpet', L: 'lava',
   };
   for (const t of Object.values(TERRAIN)) {
     for (const k of ['top', 'left', 'right', 'fringe']) if (t[k]) t[k] = t[k].map(rgb);
@@ -242,6 +249,10 @@
     state.goal = new Set((state.objective.goal || []).map(([x, y]) => key(x, y)));
     state.waves = (def.reinforcements || []).map(w => ({ ...w, done: false }));
     state.clock = 0;
+    BG = makeBg(def.bg);
+    // 天井：rules.ceiling（全体）と rules.ceilingAreas（{ エリア名: 高さ }、吹き抜けなど）
+    state.ceiling = def.rules?.ceiling ?? Infinity;
+    state.ceilingAreas = def.rules?.ceilingAreas || {};
     state.lastAttack = 0;
     state.zoc = def.rules?.zoc !== false;
     state.areas = def.areas || {};
@@ -353,15 +364,40 @@
     { o: rgb('#3a2400'), y: rgb('#ffe040') }, 9, 6,
   );
 
-  const BG = (() => {
+  // 背景：既定（夜）/ cave（洞窟）/ sky（高空）
+  const BG_THEMES = {
+    night: ['#1c2a4c', '#04060e'],
+    cave: ['#2a1a14', '#050303'],
+    sky: ['#3a78d8', '#a8d8f8'],
+  };
+  function makeBg(theme) {
     const c = makeCanvas(VW, VH), g = c.getContext('2d');
+    const [a, b] = BG_THEMES[theme] || BG_THEMES.night;
     const grad = g.createLinearGradient(0, 0, 0, VH);
-    grad.addColorStop(0, '#1c2a4c');
-    grad.addColorStop(1, '#04060e');
+    grad.addColorStop(0, a);
+    grad.addColorStop(1, b);
     g.fillStyle = grad;
     g.fillRect(0, 0, VW, VH);
+    if (theme === 'sky') {
+      // 流れる雲のかたまり
+      g.fillStyle = 'rgba(255,255,255,.55)';
+      for (let i = 0; i < 18; i++) {
+        const x = hash(i, 1, 9) * VW, y = 20 + hash(i, 2, 9) * (VH - 40), w = 20 + hash(i, 3, 9) * 50;
+        g.fillRect(Math.round(x), Math.round(y), Math.round(w), 3);
+        g.fillRect(Math.round(x + w * 0.2), Math.round(y - 2), Math.round(w * 0.5), 2);
+      }
+    }
+    if (theme === 'cave') {
+      // 天井から垂れる鍾乳石の影
+      g.fillStyle = 'rgba(0,0,0,.45)';
+      for (let i = 0; i < 26; i++) {
+        const x = Math.round(hash(i, 5, 3) * VW), len = 6 + Math.round(hash(i, 6, 3) * 22);
+        for (let k = 0; k < len; k++) g.fillRect(x + (k >> 3), k, Math.max(1, 4 - (k >> 2)), 1);
+      }
+    }
     return c;
-  })();
+  }
+  let BG = makeBg('night');
 
   // ---------------------------------------------------------------- ユニット
   const CLASSES = {
@@ -379,34 +415,36 @@
       pal: { h: '#8a8a96', b: '#5c5c68', k: '#ffcc30' },
     },
     // 飛行ユニット：fly = 飛行高度（段）、climb = 1 歩で越えられる段差。水の上や相手の地上ユニットの上も飛べる。
+    // 天井があると「天井 − 足場 − 1」までしか上がれず、それが minFly 未満だと飛べずに地上を歩く
+    // （groundMove / groundJump）。fireRes は溶岩の熱に耐える
     // 魔物（pal 固定の配色）と、チーム色の鎧を着た騎乗兵の両方を用意する
     fairy: {
-      name: '妖精', sprite: 'fairy', fly: 1, climb: 3, hp: 44, mp: 40, atk: 24, def: 6, agi: 16, move: 5, jump: 3,
+      name: '妖精', sprite: 'fairy', fly: 1, climb: 3, minFly: 1, groundMove: 3, groundJump: 2, hp: 44, mp: 40, atk: 24, def: 6, agi: 16, move: 5, jump: 3,
       range: [1, 3], wt: 90, type: 'magic',
       pal: { s: '#f8d8b8', a: '#80e0a0', b: '#50b070', v: '#d8f4ff', w: '#a8e0ff' },
     },
     pegasus: {
-      name: 'ペガサス', sprite: 'pegasus', fly: 3, climb: 6, hp: 70, mp: 0, atk: 26, def: 10, agi: 14, move: 6, jump: 6,
+      name: 'ペガサス', sprite: 'pegasus', fly: 3, climb: 6, minFly: 2, groundMove: 4, groundJump: 2, hp: 70, mp: 0, atk: 26, def: 10, agi: 14, move: 6, jump: 6,
       range: [1, 1], wt: 95, type: 'melee',
       pal: { w: '#f0f0f8', b: '#c4c8dc', h: '#a8c8ff', v: '#ffffff', d: '#8a7a60', k: '#202040' },
     },
     pegasusKnight: {
-      name: 'ペガサスナイト', sprite: 'pegasusKnight', fly: 3, climb: 6, hp: 78, mp: 8, atk: 28, def: 14, agi: 13, move: 6, jump: 6,
+      name: 'ペガサスナイト', sprite: 'pegasusKnight', fly: 3, climb: 6, minFly: 2, groundMove: 4, groundJump: 2, hp: 78, mp: 8, atk: 28, def: 14, agi: 13, move: 6, jump: 6,
       range: [1, 1], wt: 100, type: 'melee', rider: true,
       pal: { w: '#f0f0f8', v: '#ffffff', d: '#8a7a60', k: '#202040', m: '#a8c8ff' },
     },
     griffon: {
-      name: 'グリフォン', sprite: 'griffon', fly: 5, climb: 9, hp: 92, mp: 0, atk: 32, def: 14, agi: 11, move: 6, jump: 9,
+      name: 'グリフォン', sprite: 'griffon', fly: 5, climb: 9, minFly: 2, groundMove: 3, groundJump: 2, hp: 92, mp: 0, atk: 32, def: 14, agi: 11, move: 6, jump: 9,
       range: [1, 1], wt: 105, type: 'melee',
       pal: { v: '#8a5a30', h: '#f0ece0', y: '#e8b030', w: '#c8a060', b: '#a07840', t: '#6a4a2a', d: '#8a6a40', k: '#201010' },
     },
     griffonRider: {
-      name: 'グリフォンライダー', sprite: 'griffonRider', fly: 5, climb: 9, hp: 96, mp: 8, atk: 33, def: 16, agi: 10, move: 6, jump: 9,
+      name: 'グリフォンライダー', sprite: 'griffonRider', fly: 5, climb: 9, minFly: 2, groundMove: 3, groundJump: 2, hp: 96, mp: 8, atk: 33, def: 16, agi: 10, move: 6, jump: 9,
       range: [1, 1], wt: 110, type: 'melee', rider: true,
       pal: { v: '#8a5a30', m: '#f0ece0', y: '#e8b030', w: '#c8a060', t: '#6a4a2a', d: '#8a6a40', k: '#201010' },
     },
     garuda: {
-      name: 'ガルーダ', sprite: 'garuda', fly: 8, climb: 99, hp: 80, mp: 0, atk: 30, def: 10, agi: 15, move: 7, jump: 99,
+      name: 'ガルーダ', sprite: 'garuda', fly: 8, climb: 99, minFly: 6, groundMove: 1, groundJump: 1, fireRes: true, hp: 80, mp: 0, atk: 30, def: 10, agi: 15, move: 7, jump: 99,
       range: [1, 1], wt: 100, type: 'melee',
       pal: { h: '#d04030', v: '#e08030', a: '#c05028', b: '#8a2a18', y: '#f0c040', k: '#ffe040' },
     },
@@ -816,9 +854,24 @@
     const dy = Math.max(0, a.y - (b.y + nb - 1), b.y - (a.y + na - 1));
     return dx + dy;
   }
-  // 飛行高度（段）と、足場＋高度の実効的な高さ
-  const altOf = u => u?.C?.fly || 0;
-  const effH = (u, p = u) => footH(p.x, p.y, sizeOf(u)) + altOf(u);
+  // 天井の高さ（なければ Infinity）。エリア指定が優先
+  function ceilingAt(x, y) {
+    for (const [name, h] of Object.entries(state.ceilingAreas || {})) {
+      if (areaTiles(name).some(t => t.x === x && t.y === y)) return h;
+    }
+    return state.ceiling ?? Infinity;
+  }
+  // (x, y) での飛行高度。天井までの余裕が minFly 未満なら飛べない（0）
+  function altAt(u, x, y) {
+    const fly = u?.C?.fly || 0;
+    if (!fly) return 0;
+    const alt = Math.min(fly, ceilingAt(x, y) - footH(x, y, sizeOf(u)) - 1);
+    return alt >= (u.C.minFly || 1) ? alt : 0;
+  }
+  const altOf = u => u?.C ? altAt(u, u.x, u.y) : 0;
+  const grounded = u => !!u?.C?.fly && altOf(u) === 0;   // 飛べない飛行ユニット
+  const moveOf = u => (grounded(u) ? u.C.groundMove ?? 1 : u.C.move) + (u.moveBonus || 0);
+  const effH = (u, p = u) => footH(p.x, p.y, sizeOf(u)) + altAt(u, p.x, p.y);
   // 攻撃対象の実効的な高さ。pos に飛行ユニットがいればその高度を足す
   const targetH = (pos, tgt) => {
     const tu = tgt?.C ? tgt : unitAt(pos.x, pos.y);
@@ -827,8 +880,10 @@
   // 1 歩進めるか。地上は通行不可の地形と jump 以上の段差を越えられない。
   // 飛行は水・堀も越え、城門なども見た目の高さ topH で climb 段まで越えられる
   function stepOk(u, a, t) {
-    if (altOf(u)) return Math.abs(topH(t.x, t.y) - topH(a.x, a.y)) <= u.C.climb;
-    return !TERRAIN[t.type].blocked && Math.abs(t.h - H(a.x, a.y)) <= u.C.jump;
+    // 飛んでいるなら飛んだまま進める（天井が低くて飛べないマスには入れない）
+    if (altOf(u)) return altAt(u, t.x, t.y) > 0 && Math.abs(topH(t.x, t.y) - topH(a.x, a.y)) <= u.C.climb;
+    const jump = grounded(u) ? u.C.groundJump ?? 1 : u.C.jump;
+    return !TERRAIN[t.type].blocked && Math.abs(t.h - H(a.x, a.y)) <= jump;
   }
   const centerOf = (u, p = u) => ({ x: p.x + (sizeOf(u) - 1) / 2, y: p.y + (sizeOf(u) - 1) / 2 });
   const gateAt = (x, y) => gates.find(g => !g.dead && g.tiles.some(t => t.x === x && t.y === y));
@@ -902,7 +957,7 @@
     const reach = new Map([[key(u.x, u.y), start]]), q = [start];
     while (q.length) {
       const cur = q.shift();
-      if (cur.c >= u.C.move + (u.moveBonus || 0) || cur.zoc) continue;
+      if (cur.c >= moveOf(u) || cur.zoc) continue;
       for (const [dx, dy] of DIRS) {
         const nx = cur.x + dx, ny = cur.y + dy, k = key(nx, ny);
         if (reach.has(k)) continue;
@@ -924,7 +979,7 @@
     const q = [reach.get(key(u.x, u.y))], zoc = zocSet(u);
     while (q.length) {
       const cur = q.shift();
-      if (cur.c >= u.C.move + (u.moveBonus || 0) || cur.zoc) continue;
+      if (cur.c >= moveOf(u) || cur.zoc) continue;
       for (const [dx, dy] of DIRS) {
         const nx = cur.x + dx, ny = cur.y + dy, t = tileAt(nx, ny), k = key(nx, ny);
         if (!t || reach.has(k) || !stepOk(u, cur, t)) continue;
@@ -1043,6 +1098,14 @@
     ctx.globalAlpha = alpha;
     ctx.drawImage(t.canvas, x, y);
     ctx.globalAlpha = 1;
+    if (t.type === 'lava') {
+      const f = Math.floor(now / 200);
+      for (let i = 0; i < 3; i++) {
+        const px = 6 + Math.floor(hash(t.x * 5 + i, t.y * 11, f) * 19), py = 4 + Math.floor(hash(t.x, t.y * 7 + i, f + 31) * 8);
+        ctx.fillStyle = i ? '#ffd040' : '#fff4a0';
+        ctx.fillRect(x + px, y + py, i ? 2 : 1, 1);
+      }
+    }
     if (t.type === 'water') {
       const f = Math.floor(now / 280);
       ctx.fillStyle = '#b0d4ff';
@@ -1054,7 +1117,8 @@
     }
     const k = key(t.x, t.y);
     const zocStop = state.phase === 'move' && state.moveTiles?.has(k) && state.reach?.get(k)?.zoc;
-    const ov = zocStop ? OV_ZOC : state.phase === 'move' && state.moveTiles?.has(k) ? OV_MOVE
+    const hazard = state.phase === 'move' && state.moveTiles?.has(k) && state.active && hazardDmg(state.active, t);
+    const ov = hazard ? OV_ATK : zocStop ? OV_ZOC : state.phase === 'move' && state.moveTiles?.has(k) ? OV_MOVE
       : state.phase === 'target' && state.atkTiles?.has(k) ? OV_ATK : null;
     if (ov) {
       ctx.globalAlpha = pulse;
@@ -1128,7 +1192,8 @@
   function drawUnit(u, ox, oy, now) {
     const gx = Math.round((u.rx - u.ry) * 16 + ox);
     const gy = Math.round((u.rx + u.ry) * 8 + 8 + oy);
-    const alt = altOf(u), fc = u.frames[u.facing][Math.floor(now / (alt ? 160 : u.moving ? 110 : 420) + u.anim) % 2];
+    // 飛べない飛行ユニットは翼を止める
+    const alt = altOf(u), fc = u.frames[u.facing][grounded(u) ? 0 : Math.floor(now / (alt ? 160 : u.moving ? 110 : 420) + u.anim) % 2];
     const bodyY = gy - Math.round((u.rh + bodyAlt(u, now)) * HS), groundY = gy - Math.round(u.gh * HS);
     // 影（能力上昇中は色付きで明滅）。飛行ユニットは高度に応じて小さく薄く
     const sw = Math.max(3, Math.round((fc.width >> 2) + 2 - alt * 0.6));
@@ -1357,7 +1422,9 @@
     const rounds = state.objective?.rounds;
     $turn.innerHTML = `<div class="ttl">TURN ${state.turn}&nbsp;<span class="rd">R${round()}${rounds ? '/' + rounds : ''}</span></div>` +
       order.map(u => `<div class="ord ${u.team}">${u === active ? '▶' : '&nbsp;'}${u.name}</div>`).join('');
-    $terrain.innerHTML = `<div class="ttl">${TERRAIN[t.type].name}</div><div>高さ <b>${t.h}</b></div>`;
+    const ceil = ceilingAt(t.x, t.y);
+    $terrain.innerHTML = `<div class="ttl">${TERRAIN[t.type].name}</div><div>高さ <b>${t.h}</b></div>` +
+      (ceil < Infinity ? `<div>天井 <b>${ceil}</b></div>` : '');
 
     const u = targetAt(cursor.x, cursor.y) || active;
     $unit.classList.toggle('hidden', !u);
@@ -1374,7 +1441,7 @@
         `<div class="row"><span class="nm">${u.name}</span><span class="cl">${u.name === u.C.name ? '' : u.C.name}</span><span class="lv">Lv${u.lv}</span></div>` +
         `<div class="row"><span class="lb">HP</span>${bar(u.hp, u.maxHp)}<span class="num">${u.hp}/${u.maxHp}</span></div>` +
         `<div class="row"><span class="lb">MP</span>${bar(u.mp, u.maxMp, 'mp')}<span class="num">${u.mp}/${u.maxMp}</span></div>` +
-        `<div class="row">WT <b>${u.wt}</b>&nbsp;攻<b>${u.atk}</b>&nbsp;防<b>${u.def}</b>${altOf(u) ? `&nbsp;<span class="fly">高度${altOf(u)}</span>` : ''}${u.status ? `&nbsp;<span class="st">${u.status}</span>` : u.leader ? '&nbsp;<span class="rel">★将</span>' : ''}</div>`;
+        `<div class="row">WT <b>${u.wt}</b>&nbsp;攻<b>${u.atk}</b>&nbsp;防<b>${u.def}</b>${altOf(u) ? `&nbsp;<span class="fly">高度${altOf(u)}</span>` : grounded(u) ? '&nbsp;<span class="st">飛行不可</span>' : ''}${u.status ? `&nbsp;<span class="st">${u.status}</span>` : u.leader ? '&nbsp;<span class="rel">★将</span>' : ''}</div>`;
     }
 
     let info = `<div class="hint">${state.hint}</div>`;
@@ -1421,6 +1488,10 @@
     state.hint = u.team === 'player' ? 'コマンドを選択' : `${u.name}の行動`;
     setCursor(u.x, u.y);
     if (speed() === 1) await showBanner(`<span class="${u.team}">${u.name}</span> のターン`, 700);
+    if (hazardDmg(u)) {
+      await applyHazard(u);
+      if (u.dead) { if (!checkEnd()) setTimeout(nextTurn, 250); return; }
+    }
     if (u.team === 'enemy' || state.auto) await runAi(u); else openMenu();
   }
 
@@ -1523,8 +1594,10 @@
     state.reach = computeReach(u);
     state.moveTiles = new Set(stopTiles(u, state.reach).map(s => key(s.x, s.y)));
     state.phase = 'move';
-    state.hint = [...state.reach.values()].some(n => n.zoc && state.moveTiles.has(key(n.x, n.y)))
-      ? '移動先を選択<br><span class="zoc">橙: ZOC で停止</span>' : '移動先を選択';
+    const reachable = [...state.reach.values()].filter(n => state.moveTiles.has(key(n.x, n.y)));
+    state.hint = '移動先を選択' +
+      (reachable.some(n => n.zoc) ? '<br><span class="zoc">橙: ZOC で停止</span>' : '') +
+      (reachable.some(n => hazardDmg(u, n)) ? '<br><span class="st">赤: 溶岩で大ダメージ</span>' : '');
     updateHUD();
   }
 
@@ -1580,6 +1653,7 @@
     u.moving = false;
     state.camUnit = null;
     setCursor(u.x, u.y);
+    await applyHazard(u);
     await runEvents();
   }
 
@@ -1649,6 +1723,32 @@
       t.gone = true;
     }
     await runEvents();
+  }
+
+  // ---------------------------------------------------------------- 地形の被害（溶岩）
+  // 溶岩の上で移動を終えるか手番を迎えると被害。地上は最大 HP の 80%、飛行中は熱で 30%、fireRes は無傷
+  function hazardDmg(u, p = u) {
+    const t = tileAt(p.x, p.y);
+    if (TERRAIN[t.type].hazard !== 'lava' || u.C.fireRes) return 0;
+    return Math.round(u.maxHp * (altAt(u, p.x, p.y) ? 0.3 : 0.8));
+  }
+  async function applyHazard(u) {
+    const dmg = hazardDmg(u);
+    if (!dmg || u.dead) return;
+    const now = performance.now();
+    effects.push({ kind: 'fire', at: [u.x, u.y, H(u.x, u.y) + altOf(u)], t0: now, until: now + 500 });
+    popups.push({ u, h: H(u.x, u.y) + altOf(u), text: String(dmg), color: '#ffa040', t0: now });
+    u.hp = Math.max(0, u.hp - dmg);
+    u.blink = true;
+    state.hint = `${u.name}は溶岩に焼かれた！`;
+    updateHUD();
+    await wait(600);
+    u.blink = false;
+    if (u.hp <= 0) {
+      u.dead = true;
+      await tween(600, p => { u.alpha = 1 - p; });
+      u.gone = true;
+    }
   }
 
   // 城門は瓦礫のマスに置き換わり、通行できるようになる
@@ -1751,6 +1851,8 @@
       const t = threat.get(key(s.x, s.y)) || 0;
       return t >= u.hp ? t * 2 : t;
     };
+    // 溶岩で倒れるマスには止まらない。被害を受けるマスは嫌う
+    stops = stops.filter(s => hazardDmg(u, s) < u.hp);
     // 攻撃対象：相手ユニットと、味方から見た城門の各マス
     const targets = foes.map(f => ({ t: f, pos: f }));
     if (u.team === 'player') {
@@ -1763,7 +1865,7 @@
         for (const { t, pos } of targets) {
           if (!inRange(u, s, pos)) continue;
           const fc = forecast(u, t, s, pos);
-          let score = fc.dmg * fc.hit / 100 - s.c * 0.3 - danger(s) * (P.danger || 0);
+          let score = fc.dmg * fc.hit / 100 - s.c * 0.3 - danger(s) * (P.danger || 0) - hazardDmg(u, s);
           if (!t.isObject) score += (fc.dmg >= t.hp ? P.killBonus ?? 60 : 0) + (P.preferWeak || 0) * (1 - t.hp / t.maxHp);
           else score *= 0.6;                                              // 城門より兵を優先
           if (u.C.type !== 'melee') score += nearest * (P.keepAway ?? 2); // 射手は距離を取る
@@ -1809,7 +1911,7 @@
     };
     const risk = s => {
       const t = threat.get(key(s.x, s.y)) || 0;
-      return t >= u.hp ? 12 : t / u.maxHp * 2 * (P.danger ? 1 : 0);
+      return (t >= u.hp ? 12 : t / u.maxHp * 2 * (P.danger ? 1 : 0)) + hazardDmg(u, s) / u.maxHp * 12;
     };
     if (P.approach === 'away') {
       // 相手からの距離が最大のマスへ（届かないマスは十分遠いとみなす）
@@ -1914,6 +2016,11 @@
           u.gone = true;
         }
         if (a.text) await showBanner(a.text, a.ms || 1500);
+        break;
+      case 'ceiling':
+        // 天井を変える（崩落で空が開く、など）。value を省くと天井なし
+        state.ceiling = a.value ?? Infinity;
+        if (a.text) await showBanner(a.text, a.ms || 1800);
         break;
       case 'win':
       case 'lose':
