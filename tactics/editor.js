@@ -213,7 +213,7 @@
   }
 
   $('btnResize').addEventListener('click', () => {
-    const W = clamp(+$('mW').value || M.W, 4, 40), H = clamp(+$('mH').value || M.H, 4, 40);
+    const W = clamp(+$('mW').value || M.W, 4, 64), H = clamp(+$('mH').value || M.H, 4, 64);
     edit(() => {
       M.hgt = Array.from({ length: H }, (_, y) => Array.from({ length: W }, (_, x) => M.hgt[y]?.[x] ?? 0));
       M.ter = Array.from({ length: H }, (_, y) => Array.from({ length: W }, (_, x) => M.ter[y]?.[x] ?? '.'));
@@ -235,7 +235,7 @@
     const i = +$('template').value;
     if (!confirm('現在の編集内容を置き換えます（元に戻すで復帰できます）。よろしいですか？')) return;
     edit(() => {
-      M = i < 0 ? blank(clamp(+$('mW').value || 14, 4, 40), clamp(+$('mH').value || 14, 4, 40))
+      M = i < 0 ? blank(clamp(+$('mW').value || 14, 4, 64), clamp(+$('mH').value || 14, 4, 64))
         : fromDef(JSON.parse(JSON.stringify(TEMPLATES[i])));
     }, true);
   });

@@ -1238,7 +1238,13 @@
     }
 
     // 奥（x+y が小さい）から手前へ描く画家のアルゴリズム。ユニットは自分の足元のタイルの直後に描く
-    const list = drawOrder.map(t => ({ k: t.x + t.y, t }));
+    // 画面に入るマスだけを先に選ぶ（大きいマップでも並べ替えの量を抑える）
+    const list = [];
+    for (const t of drawOrder) {
+      const sx = (t.x - t.y) * 16 + ox, base = (t.x + t.y) * 8 + oy;
+      if (sx < -16 || sx > VW + 16 || base + 20 < 0 || base - topH(t.x, t.y) * HS > VH) continue;
+      list.push({ k: t.x + t.y, t });
+    }
     for (const u of units) {
       if (u.gone) continue;
       if (sizeOf(u) > 1) {
@@ -1270,8 +1276,69 @@
 
   function frame(now) {
     render(now);
+    drawMinimap();
     requestAnimationFrame(frame);
   }
+
+  // ---------------------------------------------------------------- ミニマップ（M キー / ボタン）
+  // マップ全体を小さなひし形で描き、ユニットの位置と今の表示範囲を示す。クリックでその場所へカーソルを移す
+  const $mini = $('minimap'), $miniCv = $('miniCanvas'), mctx = $miniCv.getContext('2d');
+  let miniScale = 2;
+  const MINI_COL = { grass: '#5c9c3c', dirt: '#a07848', stone: '#9a9aa2', sand: '#d8c088', water: '#3868c0', floor: '#a8a49a',
+    brick: '#a08c74', bridge: '#9a6a3a', rubble: '#7a7670', gate: '#6a4a2a', carpet: '#a83034' };
+  function miniPos(x, y, h = 0) {
+    return [(x - y + MH) * miniScale, (x + y) * miniScale / 2 - h * miniScale / 4 + 4];
+  }
+  function drawMinimap() {
+    if ($mini.classList.contains('hidden') || !MAP) return;
+    miniScale = clamp(Math.floor(200 / (MW + MH)), 1, 4);
+    const w = (MW + MH) * miniScale + 2, h = (MW + MH) * miniScale / 2 + 12;
+    if ($miniCv.width !== w || $miniCv.height !== h) {
+      $miniCv.width = w;
+      $miniCv.height = h;
+      $miniCv.style.width = w + 'px';
+      $miniCv.style.height = h + 'px';
+    }
+    mctx.clearRect(0, 0, w, h);
+    for (const t of drawOrder) {
+      const [px, py] = miniPos(t.x, t.y, topH(t.x, t.y));
+      mctx.fillStyle = shadeHex(MINI_COL[t.type] || TERRAIN[t.type].miniColor || '#888', Math.min(0.4, topH(t.x, t.y) * 0.04));
+      mctx.fillRect(px - miniScale, py, miniScale * 2, Math.max(1, miniScale / 2 + 1));
+    }
+    for (const u of units) {
+      if (u.dead) continue;
+      const n = sizeOf(u) - 1, [px, py] = miniPos(u.x + n / 2, u.y + n / 2, footH(u.x, u.y, sizeOf(u)) + altOf(u));
+      const r = Math.max(2, miniScale) + (n ? miniScale * 2 : 0);
+      mctx.fillStyle = '#000';
+      mctx.fillRect(px - r / 2 - 1, py - r / 2 - 1, r + 2, r + 2);
+      mctx.fillStyle = u === state.active ? '#ffe070' : u.team === 'player' ? '#6aa0ff' : '#ff6a5a';
+      mctx.fillRect(px - r / 2, py - r / 2, r, r);
+    }
+    // 今の表示範囲
+    const cx = (cam.x / 16 + MH) * miniScale, cy = cam.y / 16 * miniScale + 4;
+    mctx.strokeStyle = '#ffffff';
+    mctx.strokeRect(Math.round(cx - VW / 16 * miniScale / 2) + 0.5, Math.round(cy - VH / 16 * miniScale / 2) + 0.5,
+      Math.round(VW / 16 * miniScale), Math.round(VH / 16 * miniScale));
+  }
+  function shadeHex(hex, f) {
+    const c = rgb(hex).map(v => clamp(Math.round(v + (255 - v) * f), 0, 255));
+    return `rgb(${c.join(',')})`;
+  }
+  function toggleMinimap() {
+    if (!MAP || state.phase === 'title') return;
+    $mini.classList.toggle('hidden');
+    $('btnMap').classList.toggle('on', !$mini.classList.contains('hidden'));
+  }
+  $miniCv.addEventListener('click', e => {
+    const r = $miniCv.getBoundingClientRect();
+    const px = (e.clientX - r.left) * $miniCv.width / r.width / miniScale - MH, py = ((e.clientY - r.top) * $miniCv.height / r.height - 4) * 2 / miniScale;
+    const x = Math.round((px + py) / 2), y = Math.round((py - px) / 2);
+    if (['look', 'move', 'target', 'menu', 'preview'].includes(state.phase)) {
+      if (state.phase === 'menu') { hideMenu(); state.phase = 'look'; state.hint = 'マップ確認中<br>(X で戻る)'; }
+      setCursor(x, y);
+    }
+  });
+  $('btnMap').addEventListener('click', toggleMinimap);
 
   // ---------------------------------------------------------------- HUD
   function bar(v, max, cls = '') {
@@ -1621,11 +1688,14 @@
     for (const f of units) {
       if (f.dead || f.team === u.team || !canAttack(f)) continue;
       const dmg = Math.max(1, f.C.type === 'magic' ? f.atk * 1.3 - u.def * 0.4 : f.atk * 1.25 - u.def * 0.7);
-      const hit = new Set();
+      // 射程の届きうる範囲（弓の高所ボーナスと体の大きさを含む）のマスだけを調べる
+      const hit = new Set(), R = f.C.range[1] + 2 + sizeOf(f);
       for (const s of stopTiles(f, computeReach(f))) {
-        for (const t of tiles) {
-          const k = key(t.x, t.y);
-          if (!hit.has(k) && inRange(f, s, t)) hit.add(k);
+        for (let y = s.y - R; y <= s.y + R; y++) {
+          for (let x = s.x - R; x <= s.x + R; x++) {
+            const t = tileAt(x, y), k = key(x, y);
+            if (t && !hit.has(k) && inRange(f, s, t)) hit.add(k);
+          }
         }
       }
       for (const k of hit) threat.set(k, (threat.get(k) || 0) + dmg);
@@ -1935,6 +2005,7 @@
     else if (['x', 'X', 'Escape', 'Backspace'].includes(e.key)) { e.preventDefault(); cancel(); }
     else if (e.key === 'f' || e.key === 'F') toggleFast();
     else if (e.key === 'a' || e.key === 'A') toggleAuto();
+    else if (e.key === 'm' || e.key === 'M') toggleMinimap();
   });
 
   // 画面上の点から、手前に描かれているタイル（またはユニット）を探す

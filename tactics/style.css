@@ -161,6 +161,15 @@ body.preview { padding: 0; justify-content: flex-start; }
 body.preview #controls, body.preview #help { display: none; }
 #game.preview #turnWin, #game.preview #infoWin, #game.preview #menu { display: none; }
 
+/* ミニマップ */
+#minimap {
+  left: 50%; top: 50%; transform: translate(-50%, -60%);
+  padding: 3px; pointer-events: auto;
+  background: rgba(10, 16, 50, .88);
+}
+#miniCanvas { display: block; image-rendering: pixelated; cursor: pointer; }
+#game.title #minimap { display: none; }
+
 .hidden { display: none !important; }
 
 #controls { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 12px; }
