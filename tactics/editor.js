@@ -21,6 +21,9 @@
     { code: 'R', name: '絨毯', color: '#a83034' },
     { code: 'b', name: '木橋', color: '#9a6a3a' },
     { code: 'x', name: '瓦礫', color: '#7a7670' },
+    { code: 'L', name: '溶岩', color: '#e05010' },
+    { code: 'c', name: '雲海（飛行のみ）', color: '#e8f0ff' },
+    { code: 'v', name: '奈落（通行不可）', color: '#101018' },
   ];
   const TCOL = Object.fromEntries(TERRAINS.map(t => [t.code, t.color]));
   const TNAME = Object.fromEntries(TERRAINS.map(t => [t.code, t.name]));
@@ -65,7 +68,8 @@
       units: (def.units || []).map(u => ({ ...u })),
       waves: (def.reinforcements || []).map(w => ({ round: w.round, text: w.text || '', units: (w.units || []).map(u => ({ ...u })) })),
       areas: JSON.parse(JSON.stringify(def.areas || {})),
-      rules: { zoc: def.rules?.zoc !== false },
+      rules: { ...(def.rules || {}), zoc: def.rules?.zoc !== false },
+      bg: def.bg || 'night',
       events: JSON.parse(JSON.stringify(def.events || [])),
     };
   }
@@ -112,7 +116,13 @@
     const areas = Object.entries(M.areas).filter(([, cells]) => cells.length);
     if (areas.length) d.areas = Object.fromEntries(areas);
     if (M.events.length) d.events = M.events;
-    if (M.rules && !M.rules.zoc) d.rules = { zoc: false };
+    const rules = {};
+    if (M.rules && !M.rules.zoc) rules.zoc = false;
+    for (const k of ['ceiling', 'floating']) if (M.rules?.[k]) rules[k] = M.rules[k];
+    if (M.rules?.edgeFall) rules.edgeFall = true;
+    if (M.rules?.ceilingAreas && Object.keys(M.rules.ceilingAreas).length) rules.ceilingAreas = M.rules.ceilingAreas;
+    if (Object.keys(rules).length) d.rules = rules;
+    if (M.bg && M.bg !== 'night') d.bg = M.bg;
     return d;
   }
 
@@ -141,6 +151,7 @@
     if (d.areas) L.push('  areas: {', ...Object.entries(d.areas).map(([k, v]) => `    ${litKey(k)}: ${lit(v)},`), '  },');
     if (d.events) L.push('  events: [', ...d.events.map(e => `    ${lit(e)},`), '  ],');
     if (d.rules) L.push(`  rules: ${lit(d.rules)},`);
+    if (d.bg) L.push(`  bg: ${lit(d.bg)},`);
     L.push('},');
     return L.join('\n');
   }
@@ -189,6 +200,18 @@
     oType: v => { M.objective.type = v; },
   };
   $('rZoc').addEventListener('change', e => edit(() => { M.rules = { ...M.rules, zoc: e.target.checked }; }));
+  $('rCeil').addEventListener('change', e => edit(() => { M.rules = { ...M.rules, ceiling: e.target.value === '' ? undefined : clamp(+e.target.value, 1, 35) }; }));
+  $('rFloat').addEventListener('change', e => edit(() => { M.rules = { ...M.rules, floating: clamp(+e.target.value || 0, 0, 8) || undefined }; }));
+  $('rEdge').addEventListener('change', e => edit(() => { M.rules = { ...M.rules, edgeFall: e.target.checked }; }));
+  $('rCeilAreas').addEventListener('change', e => edit(() => {
+    const areas = {};
+    for (const part of e.target.value.split(/[,、\s]+/)) {
+      const [k, v] = part.split('=');
+      if (k && v !== undefined && !isNaN(+v)) areas[k.trim()] = +v;
+    }
+    M.rules = { ...M.rules, ceilingAreas: areas };
+  }));
+  $('mBg').addEventListener('change', e => edit(() => { M.bg = e.target.value; }));
   for (const [id, set] of Object.entries(fields)) {
     $(id).addEventListener('change', e => edit(() => set(e.target.value), id === 'oType'));
   }
@@ -204,6 +227,11 @@
     $('oText').placeholder = defaultText();
     $('oRounds').value = M.objective.rounds;
     $('rZoc').checked = M.rules?.zoc !== false;
+    $('rCeil').value = M.rules?.ceiling ?? '';
+    $('rFloat').value = M.rules?.floating ?? '';
+    $('rEdge').checked = !!M.rules?.edgeFall;
+    $('rCeilAreas').value = Object.entries(M.rules?.ceilingAreas || {}).map(([k, v]) => `${k}=${v}`).join(', ');
+    $('mBg').value = M.bg || 'night';
     $('oRoundsLabel').style.display = ['survive', 'defend'].includes(M.objective.type) ? '' : 'none';
     fillGroups();
     fillAreas();
@@ -612,13 +640,16 @@
       else occ.set(k, u.name);
     }
     if (dup.size) msgs.push(`同じマスに複数のユニットがいます: ${[...dup].join(', ')}`);
-    const bad = all.filter(u => cellsOf(u).some(([x, y]) => (M.ter[y]?.[x] === 'w' && !FLY.has(u.cls)) || gateCell(x, y)));
+    const bad = all.filter(u => cellsOf(u).some(([x, y]) => {
+      const c = M.ter[y]?.[x];
+      return ((c === 'w' || c === 'c') && !FLY.has(u.cls)) || c === 'v' || gateCell(x, y);
+    }));
     const rough = all.filter(u => sizeOf(u) > 1).filter(u => {
       const hs = cellsOf(u).map(([x, y]) => M.hgt[y]?.[x] ?? 0);
       return Math.max(...hs) - Math.min(...hs) > 3;
     });
     if (rough.length) msgs.push(`大型ユニットの足場の起伏が 3 段を超えています（動けません）: ${rough.map(u => u.name).join(', ')}`);
-    if (bad.length) msgs.push(`水上・城門の上にいるユニット: ${bad.map(u => `${u.name}(${u.x},${u.y})`).join(', ')}`);
+    if (bad.length) msgs.push(`立てない場所（水・雲海・奈落・城門）にいるユニット: ${bad.map(u => `${u.name}(${u.x},${u.y})`).join(', ')}`);
     for (const g of M.gates) {
       if (g.top <= M.hgt[g.y][g.x] + g.door) msgs.push(`城門(${g.x},${g.y}) の門楼の高さが扉より低くなっています`);
     }

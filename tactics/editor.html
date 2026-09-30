@@ -51,7 +51,20 @@
       </label>
       <label>表示文 <input id="oText" type="text"></label>
       <label id="oRoundsLabel">ラウンド数 <input id="oRounds" type="number" min="1" max="30"></label>
+    </section>
+
+    <section>
+      <h2>ルール・環境</h2>
       <label class="check"><span><input id="rZoc" type="checkbox" checked> ZOC を有効にする</span></label>
+      <div class="row">
+        <label>天井の高さ <input id="rCeil" type="number" min="1" max="35" placeholder="なし"></label>
+        <label>浮島の底 <input id="rFloat" type="number" min="0" max="8" placeholder="0"></label>
+      </div>
+      <label>エリア別の天井 <input id="rCeilAreas" type="text" placeholder="例: skylight=99"></label>
+      <label class="check"><span><input id="rEdge" type="checkbox"> マップの外へ押し出されると転落</span></label>
+      <label>背景
+        <select id="mBg"><option value="night">夜空</option><option value="cave">洞窟</option><option value="sky">高空</option></select>
+      </label>
     </section>
 
     <section>

@@ -6,6 +6,8 @@
 //           g 草原 / d 荒れ地 / r 岩場 / s 砂地 / w 川・堀（通行不可）
 //           f 石畳 / W 城壁・石壁 / R 絨毯 / b 木橋 / x 瓦礫 / G 城門の床（gates と併用）
 //           L 溶岩（上で止まると地上は最大 HP の 80%、飛行中は 30% の被害。fireRes のユニットは無傷）
+//           c 雲海（飛行ユニットだけが入れる。地上ユニットは押し出されると転落）
+//           v 奈落（誰も入れない。押し出されると飛行ユニットは戦線離脱、地上ユニットは転落）
 // gates   : 壊せる城門。{ x, y, width（x 方向のマス数）, top（門楼の上端の高さ）, door（床から扉の上端までの段数）, hp, def }
 // objective: { type, text, rounds?, goal? }
 //           type = leader（leader: true の敵を倒す）/ annihilate（全滅）/ survive（rounds ラウンド耐える）
@@ -26,7 +28,10 @@
 //           { ceiling: 6 } 天井の高さ（地形と同じ段）。飛行ユニットは天井 − 足場 − 1 までしか上がれず、
 //           クラスの minFly に届かないと飛べない（ガルーダは地上でほぼ動けない置物になる）。
 //           { ceilingAreas: { エリア名: 高さ } } でエリアごとの天井（吹き抜けなど）
+//           { floating: 3 } 陸地の下に岩の底を描いて浮島に見せる（段数）
+//           { edgeFall: true } マップの外へ押し出されると奈落と同じく転落する
 // bg      : 背景 'night'（既定）/ 'cave'（洞窟）/ 'sky'（高空）
+// 吹き飛ばし: ゴーレム・オーク・グリフォン・グリフォンライダー・ガルーダ・妖精の攻撃は、当たると相手を 1 マス押す
 // events  : [{ when: 条件, do: [アクション…] }] 条件を満たした時点で 1 回だけ実行（移動・攻撃の後とターン開始時に判定）
 //           対象の指定（unit / target）: ユニットの id か name、または '@enemy' / '@player' / '@all'（except で除外）
 //           条件: { type: 'reach', unit, area } 到達 / { type: 'defeated', unit } 撃破（'@enemy' なら全滅）
@@ -608,6 +613,126 @@ window.TACTICS_MAPS = [
           { type: 'message', text: 'ヴァルナ「……ようやく翼を広げられる」' },
         ],
       },
+    ],
+  },
+  {
+    id: 'garden',
+    name: '空中庭園',
+    desc: '雲の上に浮かぶ庭園。島の外は奈落で、強風のため飛行ユニットも飛べない。オーク・グリフォン・ガルーダ・妖精の攻撃は相手を吹き飛ばし、奈落へ落とせばガルーダでも戦線離脱、地上の兵は転落する。',
+    objective: { type: 'leader', text: '天空卿 ヴェルザの撃破' },
+    bg: 'sky',
+    rules: { floating: 3, edgeFall: true },
+    // v = 奈落、b = 橋（1 マス幅。吹き飛ばしに注意）
+    height: [
+      '000000000000000333',
+      '000000000000000333',
+      '000000000000000333',
+      '022200222222200333',
+      '022200222222223333',
+      '022222222222200333',
+      '022200222222200000',
+      '000000222222200000',
+      '000000222222200000',
+      '000002200000000000',
+      '000002000000000000',
+      '000001000000000000',
+      '111111100000000000',
+      '111111100000000000',
+      '111111100000000000',
+      '111111100000000000',
+      '111111100000000000',
+      '111111100000000000',
+    ],
+    terrain: [
+      'vvvvvvvvvvvvvvvfff',
+      'vvvvvvvvvvvvvvvfff',
+      'vvvvvvvvvvvvvvvfff',
+      'vgggvvgfffffgvvfff',
+      'vgggvvfffffffbbfff',
+      'vgggbbfgggggfvvfff',
+      'vgggvvfffffffvvvvv',
+      'vvvvvvfffffffvvvvv',
+      'vvvvvvgfffffgvvvvv',
+      'vvvvvbbvvvvvvvvvvv',
+      'vvvvvbvvvvvvvvvvvv',
+      'vvvvvbvvvvvvvvvvvv',
+      'gggggggvvvvvvvvvvv',
+      'gggggggvvvvvvvvvvv',
+      'gggggggvvvvvvvvvvv',
+      'gggggggvvvvvvvvvvv',
+      'gggggggvvvvvvvvvvv',
+      'gggggggvvvvvvvvvvv',
+    ],
+    units: [
+      { name: 'レオン', cls: 'knight', team: 'player', x: 3, y: 13, lv: 5, hair: '#c89040', facing: 3 },
+      { name: 'ガルド', cls: 'soldier', team: 'player', x: 4, y: 14, lv: 5, hair: '#503828', facing: 3 },
+      { name: 'セリカ', cls: 'archer', team: 'player', x: 1, y: 14, lv: 4, hair: '#e8d070', facing: 3 },
+      { name: 'ミラ', cls: 'wizard', team: 'player', x: 2, y: 16, lv: 4, hair: '#b05a30', facing: 3 },
+      { name: 'ティナ', cls: 'fairy', team: 'player', x: 3, y: 15, lv: 5, hair: '#f0e070', facing: 3 },
+      { name: 'シエル', cls: 'pegasusKnight', team: 'player', x: 5, y: 15, lv: 5, hair: '#e0c0f0', facing: 3 },
+      { name: 'ヴェルザ', cls: 'knight', team: 'enemy', x: 16, y: 2, lv: 7, hair: '#e0e0f0', facing: 1, leader: true },
+      { name: 'オーク', cls: 'orc', team: 'enemy', x: 16, y: 4, lv: 5, hair: '#000000', facing: 1 },
+      { name: 'グリフォン', cls: 'griffon', team: 'enemy', x: 10, y: 4, lv: 4, hair: '#000000', facing: 1 },
+      { name: 'ガルーダ', cls: 'garuda', team: 'enemy', x: 8, y: 6, lv: 4, hair: '#000000', facing: 1 },
+      { name: 'ゴブリン', cls: 'goblin', team: 'enemy', x: 7, y: 7, lv: 4, hair: '#000000', facing: 1 },
+      { name: 'ゴブリン', cls: 'goblin', team: 'enemy', x: 11, y: 7, lv: 4, hair: '#000000', facing: 1 },
+      { name: 'ヘルガ', cls: 'archer', team: 'enemy', x: 2, y: 4, lv: 4, hair: '#d0a060', facing: 0, ai: 'sniper' },
+    ],
+  },
+  {
+    id: 'skybattle',
+    name: '雲海の空戦',
+    desc: '足場は雲海と岩の尖塔だけ。飛行ユニットしか戦えない空中戦。高度の差と、岩の上からの射撃・急降下が鍵。',
+    objective: { type: 'leader', text: '天空の王 ジャターユの撃破' },
+    bg: 'sky',
+    // c = 雲海（飛行ユニットのみ）、r = 岩の尖塔
+    height: [
+      '0000000000000000',
+      '0000000000000000',
+      '0000000000000000',
+      '0005000000006000',
+      '0000000000000000',
+      '0000000700000000',
+      '0000000000000000',
+      '0000000000000000',
+      '0000000000000000',
+      '0000000000800000',
+      '0000040000000000',
+      '0000000000000000',
+      '0000000000000500',
+      '0030000040000000',
+      '0000000000000000',
+      '0000000000000000',
+    ],
+    terrain: [
+      'cccccccccccccccc',
+      'cccccccccccccccc',
+      'cccccccccccccccc',
+      'cccrccccccccrccc',
+      'cccccccccccccccc',
+      'cccccccrcccccccc',
+      'cccccccccccccccc',
+      'cccccccccccccccc',
+      'cccccccccccccccc',
+      'ccccccccccrccccc',
+      'cccccrcccccccccc',
+      'cccccccccccccccc',
+      'cccccccccccccrcc',
+      'ccrcccccrccccccc',
+      'cccccccccccccccc',
+      'cccccccccccccccc',
+    ],
+    units: [
+      { name: 'シエル', cls: 'pegasusKnight', team: 'player', x: 3, y: 13, lv: 5, hair: '#e0c0f0', facing: 3 },
+      { name: 'アイラ', cls: 'pegasusKnight', team: 'player', x: 4, y: 14, lv: 5, hair: '#f0d080', facing: 3 },
+      { name: 'ルーク', cls: 'griffonRider', team: 'player', x: 2, y: 14, lv: 5, hair: '#5a3a2a', facing: 3 },
+      { name: 'ヴァルナ', cls: 'garuda', team: 'player', x: 5, y: 14, lv: 6, hair: '#000000', facing: 3 },
+      { name: 'ティナ', cls: 'fairy', team: 'player', x: 3, y: 15, lv: 5, hair: '#f0e070', facing: 3 },
+      { name: 'ジャターユ', cls: 'garuda', team: 'enemy', x: 12, y: 1, lv: 7, hair: '#000000', facing: 1, leader: true },
+      { name: 'グリフォン', cls: 'griffon', team: 'enemy', x: 10, y: 2, lv: 4, hair: '#000000', facing: 1 },
+      { name: 'グリフォン', cls: 'griffon', team: 'enemy', x: 13, y: 4, lv: 4, hair: '#000000', facing: 1 },
+      { name: 'ペガサス', cls: 'pegasus', team: 'enemy', x: 9, y: 4, lv: 4, hair: '#000000', facing: 1 },
+      { name: 'ペガサス', cls: 'pegasus', team: 'enemy', x: 14, y: 6, lv: 4, hair: '#000000', facing: 1 },
     ],
   },
 ];

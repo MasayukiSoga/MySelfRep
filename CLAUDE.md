@@ -31,4 +31,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 1 マス 1 ユニット: 止まれるのは空いたマスだけ。移動中は味方のマスを通過できる（相手は不可）。大型ユニットも同じで、味方と重なる位置は `pass` 付きの通過点として `stopTiles` から除く。`loadMap` は重なった初期配置を近くの空きマスへずらし、`moveAlong` の後に重なりを検出すると console.error を出す。
 - 飛行ユニット（`CLASSES` の `fly` = 高度の段、`climb` = 1 歩で越えられる段差）: 移動の可否は `stepOk`（飛行は水も越え、`topH` 基準で climb 段まで。地上は通行不可地形と jump）。相手の地上ユニットの上も飛び越えられるが、止まれるのは空いたマスだけ（城門の上も不可）。高さの比較は `effH`（足場＋高度）と `targetH`（攻撃マスの高さ＋そこにいる飛行ユニットの高度）。地上の近接は高低差 reachH（既定 2）までしか届かず、飛行ユニットの近接は急降下（`flyOff`）なので高低差を問わない。弓は飛行ユニットに命中 +15・ダメージ ×1.3。描画は影を地面に残し本体を `bodyAlt`（高度＋揺れ）ぶん持ち上げ、カーソル中・行動中は足元へ点線を引く。騎乗兵（pegasusKnight / griffonRider）は乗騎のドット絵に `RIDER` を重ねたもの。スプライトの幅は定義ごとに可変（`w`）、下端が足元（`canvas.foot`）、`flap` で 2 コマ目に翼 v を下げる。
 - ZOC: 相手ユニットに隣接するマス（大型ユニットは体の周囲）に入るとその手番の移動が止まる（開始マスからは抜け出せる）。`zocSet` が止まるマスを作り、`computeReach` / `computeReachBig` はそのノードに `zoc` を付けて先へ展開しない。高度 3 以上の飛行ユニットは ZOC を持たず受けない（`zocUnit`）。マップの `rules: { zoc: false }` で無効。移動範囲では止まるマスを橙で、相手にカーソルを合わせるとその ZOC（`state.zocShow`）を表示。
-- 膠着対策: 3 ラウンド（`state.lastAttack` から WT 300）誰も攻撃しないと、オートの味方は危険回避を切って攻める。
+- 膠着対策: 3 ラウンド（`state.lastAttack` から WT 300）誰も攻撃しないと、オートの味方は危険回避を切って攻める。20 ラウンド攻撃がなければ時間切れで敗北。
+- 開発用: `?debug` を付けると `window.__tactics`（state / units / tiles / computeReach / aiOf）から内部状態を覗ける。
+- 天井: `rules.ceiling` / `rules.ceilingAreas`。`altAt` が「天井 − 足場 − 1」と fly の小さい方を返し、minFly 未満なら 0（飛べない）。飛べない飛行ユニットは `grounded`、移動は `moveOf`（groundMove）と `stepOk` の地上ルール（groundJump）。飛行中は天井が低くて飛べないマスには入れない。イベント `ceiling` で変更可。
+- 地形の被害: 溶岩（`TERRAIN.lava.hazard`）の上で移動を終えるか手番を迎えると `applyHazard`（地上 80% / 飛行 30% / fireRes 無傷）。AI は倒れるマスを除き、被害のあるマスを嫌う。
+- 奈落（void：誰も入れない・描かない）と雲海（cloud：飛行のみ）。`knockback` を持つクラスの攻撃が当たると `knockDest` の方向へ 1 マス押し、奈落・マップ外（`rules.edgeFall`）へ出ると転落（`dead && fell`、撃破扱い）。地上ユニットは雲海へ押されても転落。AI は突き落とせる攻撃を撃破と同等に評価。`rules.floating` で陸地の下に岩の底を描く。背景は `bg`（night / cave / sky）。
+- ミニマップ（M）は `drawMinimap`。描画は画面内のマスだけを並べ替え、`threatMap` は射程の届く範囲だけを調べるので 64×64 まで実用的。

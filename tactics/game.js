@@ -143,6 +143,18 @@
       topFx: (c, ux, uy) => near(ux * 2, 0.07) && near(uy * 2, 0.3) || near(uy * 2, 0.07) && near(ux * 2, 0.3) ? [214, 170, 70] : c,
       sideFx: (c, px, k) => brickFx(c, px, k),
     },
+    // 奈落：足場のない空。誰も入れず（飛行ユニットも強風で飛べない）、押し出されると転落する
+    void: {
+      name: '奈落', top: ['#000000'], left: ['#000000'], right: ['#000000'], blocked: true, void: true,
+    },
+    // 雲海：飛行ユニットだけが飛べる空。地上のユニットは入れず、押し出されると転落する
+    cloud: {
+      name: '雲海',
+      top: ['#f4f8ff', '#e6eefc', '#ffffff', '#dce6f8'],
+      left: ['#c8d6f0', '#bccce8'], right: ['#a8bce0', '#9cb2d8'],
+      topFx: (c, ux, uy) => near(ux * 3 + uy * 2, 0.1) ? shade(c, -0.08) : c,
+      blocked: true, cloud: true,
+    },
     lava: {
       name: '溶岩',
       top: ['#e05010', '#c83808', '#f07018', '#b02804'],
@@ -177,7 +189,7 @@
   // マップデータの地形文字。'.' は高さと周囲から自動で決める
   const TERRAIN_CODES = {
     g: 'grass', d: 'dirt', r: 'stone', s: 'sand', w: 'water',
-    f: 'floor', W: 'brick', b: 'bridge', x: 'rubble', G: 'floor', R: 'carpet', L: 'lava',
+    f: 'floor', W: 'brick', b: 'bridge', x: 'rubble', G: 'floor', R: 'carpet', L: 'lava', v: 'void', c: 'cloud',
   };
   for (const t of Object.values(TERRAIN)) {
     for (const k of ['top', 'left', 'right', 'fringe']) if (t[k]) t[k] = t[k].map(rgb);
@@ -232,6 +244,8 @@
       }
       return obj;
     });
+    state.floating = def.rules?.floating || 0;
+    state.edgeFall = !!def.rules?.edgeFall;
     for (const t of tiles) t.canvas = buildTile(t);
     drawOrder = [...tiles].sort((a, b) => (a.x + a.y) - (b.x + b.y));
     units = [];
@@ -239,7 +253,7 @@
       // 1 マス 1 ユニット：先に置かれたユニットと重なる配置は近くの空きマスへずらす
       const n = CLASSES[r.cls].size || 1;
       const clash = units.some(o => [...Array(n * n)].some((_, q) => covers(o, r.x + q % n, r.y + Math.floor(q / n))));
-      const spot = clash ? freeSpotNear(r.x, r.y, n) : null;
+      const spot = clash ? freeSpotNear(r.x, r.y, n, !!CLASSES[r.cls].fly) : null;
       if (clash) console.warn(`${r.name} の配置 (${r.x}, ${r.y}) は他のユニットと重なるため (${spot?.x}, ${spot?.y}) へずらしました`);
       if (clash && !spot) continue;
       units.push(createUnit(spot ? { ...r, x: spot.x, y: spot.y } : r));
@@ -269,7 +283,10 @@
   // 1 マス分の「柱」（上面ひし形 + 左右の側面）をドット単位で描く
   function buildTile(t) {
     const T = TERRAIN[t.gate ? 'brick' : t.type];
-    const depth = (t.drawH ?? t.h) * HS + BASE;
+    if (T.void) return makeCanvas(TW, TH + BASE);
+    // 浮島（rules.floating 段）：陸地の下に先細りの岩の底を付ける
+    const under = T.cloud ? 0 : (state.floating || 0) * HS;
+    const depth = (t.drawH ?? t.h) * HS + BASE + under, landDepth = depth - under;
     const w = TW, h = TH + depth;
     const c = makeCanvas(w, h), g = c.getContext('2d');
     const img = g.createImageData(w, h), d = img.data;
@@ -306,6 +323,12 @@
         else if (T.fringe && k <= fringe) col = T.fringe[px < 16 ? 0 : 1];
         else if (T.sideFx) col = T.sideFx(col, px, k);
         else if (k % HS === 0) col = shade(col, -0.2);
+        if (k > landDepth) {
+          // 岩の底：下へ行くほど細く暗く
+          const f = (k - landDepth) / under, edge = Math.abs(px - 15.5) / 16;
+          if (edge > 1 - f * 0.9) continue;
+          col = shade(pick(px < 16 ? TERRAIN.stone.left : TERRAIN.stone.right, hash(gx + px, gy + k, 4)), -0.25 - f * 0.4);
+        }
         if (k === depth) col = shade(col, -0.45);
         if (px === 15) col = shade(col, 0.12);
         put(px, py, col);
@@ -419,7 +442,7 @@
     // （groundMove / groundJump）。fireRes は溶岩の熱に耐える
     // 魔物（pal 固定の配色）と、チーム色の鎧を着た騎乗兵の両方を用意する
     fairy: {
-      name: '妖精', sprite: 'fairy', fly: 1, climb: 3, minFly: 1, groundMove: 3, groundJump: 2, hp: 44, mp: 40, atk: 24, def: 6, agi: 16, move: 5, jump: 3,
+      name: '妖精', sprite: 'fairy', knockback: 1, fly: 1, climb: 3, minFly: 1, groundMove: 3, groundJump: 2, hp: 44, mp: 40, atk: 24, def: 6, agi: 16, move: 5, jump: 3,
       range: [1, 3], wt: 90, type: 'magic',
       pal: { s: '#f8d8b8', a: '#80e0a0', b: '#50b070', v: '#d8f4ff', w: '#a8e0ff' },
     },
@@ -434,27 +457,27 @@
       pal: { w: '#f0f0f8', v: '#ffffff', d: '#8a7a60', k: '#202040', m: '#a8c8ff' },
     },
     griffon: {
-      name: 'グリフォン', sprite: 'griffon', fly: 5, climb: 9, minFly: 2, groundMove: 3, groundJump: 2, hp: 92, mp: 0, atk: 32, def: 14, agi: 11, move: 6, jump: 9,
+      name: 'グリフォン', sprite: 'griffon', knockback: 1, fly: 5, climb: 9, minFly: 2, groundMove: 3, groundJump: 2, hp: 92, mp: 0, atk: 32, def: 14, agi: 11, move: 6, jump: 9,
       range: [1, 1], wt: 105, type: 'melee',
       pal: { v: '#8a5a30', h: '#f0ece0', y: '#e8b030', w: '#c8a060', b: '#a07840', t: '#6a4a2a', d: '#8a6a40', k: '#201010' },
     },
     griffonRider: {
-      name: 'グリフォンライダー', sprite: 'griffonRider', fly: 5, climb: 9, minFly: 2, groundMove: 3, groundJump: 2, hp: 96, mp: 8, atk: 33, def: 16, agi: 10, move: 6, jump: 9,
+      name: 'グリフォンライダー', sprite: 'griffonRider', knockback: 1, fly: 5, climb: 9, minFly: 2, groundMove: 3, groundJump: 2, hp: 96, mp: 8, atk: 33, def: 16, agi: 10, move: 6, jump: 9,
       range: [1, 1], wt: 110, type: 'melee', rider: true,
       pal: { v: '#8a5a30', m: '#f0ece0', y: '#e8b030', w: '#c8a060', t: '#6a4a2a', d: '#8a6a40', k: '#201010' },
     },
     garuda: {
-      name: 'ガルーダ', sprite: 'garuda', fly: 8, climb: 99, minFly: 6, groundMove: 1, groundJump: 1, fireRes: true, hp: 80, mp: 0, atk: 30, def: 10, agi: 15, move: 7, jump: 99,
+      name: 'ガルーダ', sprite: 'garuda', knockback: 1, fly: 8, climb: 99, minFly: 6, groundMove: 1, groundJump: 1, fireRes: true, hp: 80, mp: 0, atk: 30, def: 10, agi: 15, move: 7, jump: 99,
       range: [1, 1], wt: 100, type: 'melee',
       pal: { h: '#d04030', v: '#e08030', a: '#c05028', b: '#8a2a18', y: '#f0c040', k: '#ffe040' },
     },
     // 大型ユニット：size×size マスを占有し、tall 段ぶんの高さがある（2 段でおよそマスの一辺の長さ）。reachH は近接攻撃が届く高低差
     golem: {
-      name: 'ゴーレム', sprite: 'golem', size: 4, tall: 12, hp: 360, mp: 0, atk: 40, def: 24, agi: 3,
+      name: 'ゴーレム', sprite: 'golem', knockback: 1, size: 4, tall: 12, hp: 360, mp: 0, atk: 40, def: 24, agi: 3,
       move: 3, jump: 2, range: [1, 2], reachH: 12, wt: 140, type: 'melee',
     },
     orc: {
-      name: 'オーク', sprite: 'fighter', hp: 110, mp: 0, atk: 32, def: 16, agi: 6, move: 3, jump: 1, range: [1, 1], wt: 120, type: 'melee',
+      name: 'オーク', sprite: 'fighter', knockback: 1, hp: 110, mp: 0, atk: 32, def: 16, agi: 6, move: 3, jump: 1, range: [1, 1], wt: 120, type: 'melee',
       pal: { s: '#7a9a5a', h: '#2a2a2a', k: '#ff4020', a: '#6a5040', b: '#4a3428', c: '#8a2a2a', w: '#a0a0a8' },
     },
   };
@@ -881,7 +904,7 @@
   // 飛行は水・堀も越え、城門なども見た目の高さ topH で climb 段まで越えられる
   function stepOk(u, a, t) {
     // 飛んでいるなら飛んだまま進める（天井が低くて飛べないマスには入れない）
-    if (altOf(u)) return altAt(u, t.x, t.y) > 0 && Math.abs(topH(t.x, t.y) - topH(a.x, a.y)) <= u.C.climb;
+    if (altOf(u)) return !TERRAIN[t.type].void && altAt(u, t.x, t.y) > 0 && Math.abs(topH(t.x, t.y) - topH(a.x, a.y)) <= u.C.climb;
     const jump = grounded(u) ? u.C.groundJump ?? 1 : u.C.jump;
     return !TERRAIN[t.type].blocked && Math.abs(t.h - H(a.x, a.y)) <= jump;
   }
@@ -1095,8 +1118,19 @@
       x += Math.round(gate.offX);
       if (gate.blink && Math.floor(now / 50) % 2) alpha *= 0.4;
     }
+    // 雲海は少し透かして下の空をのぞかせる
+    ctx.globalAlpha = alpha * (TERRAIN[t.type].cloud ? 0.82 : 1);
+    if (!TERRAIN[t.type].void) ctx.drawImage(t.canvas, x, y);
     ctx.globalAlpha = alpha;
-    ctx.drawImage(t.canvas, x, y);
+    if (TERRAIN[t.type].cloud) {
+      // 雲の流れ
+      const f = now / 900;
+      ctx.fillStyle = 'rgba(255,255,255,.7)';
+      for (let i = 0; i < 2; i++) {
+        const px = 6 + Math.floor(((hash(t.x * 3 + i, t.y, 2) * 19 + f * (i + 1)) % 19)), py = 5 + Math.floor(hash(t.x, t.y + i, 5) * 6);
+        ctx.fillRect(x + px, y + py, 3, 1);
+      }
+    }
     ctx.globalAlpha = 1;
     if (t.type === 'lava') {
       const f = Math.floor(now / 200);
@@ -1350,7 +1384,8 @@
   const $mini = $('minimap'), $miniCv = $('miniCanvas'), mctx = $miniCv.getContext('2d');
   let miniScale = 2;
   const MINI_COL = { grass: '#5c9c3c', dirt: '#a07848', stone: '#9a9aa2', sand: '#d8c088', water: '#3868c0', floor: '#a8a49a',
-    brick: '#a08c74', bridge: '#9a6a3a', rubble: '#7a7670', gate: '#6a4a2a', carpet: '#a83034' };
+    brick: '#a08c74', bridge: '#9a6a3a', rubble: '#7a7670', gate: '#6a4a2a', carpet: '#a83034', lava: '#f06018',
+    cloud: '#e8f0ff', void: null };
   function miniPos(x, y, h = 0) {
     return [(x - y + MH) * miniScale, (x + y) * miniScale / 2 - h * miniScale / 4 + 4];
   }
@@ -1366,6 +1401,7 @@
     }
     mctx.clearRect(0, 0, w, h);
     for (const t of drawOrder) {
+      if (TERRAIN[t.type].void) continue;
       const [px, py] = miniPos(t.x, t.y, topH(t.x, t.y));
       mctx.fillStyle = shadeHex(MINI_COL[t.type] || TERRAIN[t.type].miniColor || '#888', Math.min(0.4, topH(t.x, t.y) * 0.04));
       mctx.fillRect(px - miniScale, py, miniScale * 2, Math.max(1, miniScale / 2 + 1));
@@ -1452,7 +1488,13 @@
         info = `<div class="row"><span class="nm ${tgt.team}">${tgt.name}</span>へ${f.magic ? 'ファイア' : '攻撃'}</div>` +
           `<div class="row">命中率 <b>${f.hit}%</b></div>` +
           `<div class="row">ダメージ <b>${f.dmg}</b></div>` +
-          `<div class="row"><span class="rel">${f.magic ? `MP ${MAGIC_COST} 消費` : REL[f.rel]}</span></div>`;
+          `<div class="row"><span class="rel">${(() => {
+            const kd = knockDest(active, active, tgt);
+            if (kd?.kind === 'fall') return '<span class="st">突き落とし!</span>';
+            if (kd?.kind === 'lava') return '<span class="st">溶岩へ押し込む</span>';
+            if (kd) return '吹き飛ばし';
+            return f.magic ? `MP ${MAGIC_COST} 消費` : REL[f.rel];
+          })()}</span></div>`;
       }
     }
     $info.innerHTML = info;
@@ -1482,6 +1524,8 @@
     for (const w of state.waves) if (!w.done && round() >= w.round) await spawnWave(w);
     await runEvents();
     if (checkEnd()) return;
+    // 20 ラウンド誰も攻撃しなければ膠着として打ち切る（届かない相手どうしが残った場合など）
+    if (state.clock - (state.lastAttack ?? 0) > 2000) { gameOver(false, '戦況は膠着した…（時間切れ）'); return; }
     if (u.dead) { nextTurn(); return; }   // イベントで離脱した
     Object.assign(state, { active: u, moved: false, acted: false, phase: 'busy', turn: state.turn + 1, moveTiles: null, atkTiles: null });
     u.mp = Math.min(u.maxMp, u.mp + 2);
@@ -1540,11 +1584,12 @@
   }
 
   // 増援：指定位置が塞がっていれば近くの空きマスに出現する
-  function freeSpotNear(x, y, n = 1) {
+  function freeSpotNear(x, y, n = 1, fly = false) {
     let best = null, bestD = Infinity;
     for (const t of tiles) {
+      const T = TERRAIN[t.type];
       if (n > 1 ? bigSpot({ size: n }, t.x, t.y) == null || gates.some(g => !g.dead && g.tiles.some(gt => covers({ x: t.x, y: t.y, size: n }, gt.x, gt.y)))
-        : TERRAIN[t.type].blocked || targetAt(t.x, t.y)) continue;
+        : (T.blocked && !(fly && !T.void)) || targetAt(t.x, t.y)) continue;
       const d = Math.abs(t.x - x) + Math.abs(t.y - y);
       if (d < bestD) { bestD = d; best = t; }
     }
@@ -1555,7 +1600,7 @@
     w.done = true;
     const spawned = [];
     for (const r of w.units) {
-      const spot = freeSpotNear(r.x, r.y, CLASSES[r.cls].size || 1);
+      const spot = freeSpotNear(r.x, r.y, CLASSES[r.cls].size || 1, !!CLASSES[r.cls].fly);
       if (!spot) continue;
       const u = createUnit({ ...r, x: spot.x, y: spot.y });
       u.alpha = 0;
@@ -1691,7 +1736,8 @@
     }
 
     const now = performance.now();
-    if (Math.random() * 100 < fc.hit) {
+    const hitLanded = Math.random() * 100 < fc.hit;
+    if (hitLanded) {
       const dmg = Math.max(1, Math.round(fc.dmg * (0.9 + Math.random() * 0.2)));
       t.hp = Math.max(0, t.hp - dmg);
       popups.push({ u: pos, h: at[2], text: String(dmg), color: '#ffffff', t0: now });
@@ -1713,6 +1759,8 @@
     updateHUD();
     await wait(450);
     t.blink = false;
+    if (hitLanded && t.hp > 0 && !t.dead) await knockback(a, t);
+    if (t.dead) { await runEvents(); return; }
     if (t.hp <= 0 && t.isObject) {
       destroyGate(t);
     } else if (t.hp <= 0) {
@@ -1723,6 +1771,64 @@
       t.gone = true;
     }
     await runEvents();
+  }
+
+  // ---------------------------------------------------------------- 吹き飛ばしと転落
+  // knockback を持つクラスの攻撃が当たると、相手を攻撃の向きに 1 マス押す（大型ユニット・構造物は動かない）。
+  // 奈落・マップの外（rules.edgeFall）へ押し出されると転落：飛行ユニットは戦線離脱、地上ユニットは即退場。
+  // 雲海へ押されると地上ユニットは転落、飛行ユニットはそのまま飛ぶ。相手や壁に当たると押せない
+  function knockDest(a, from, t) {
+    if (!a.C.knockback || t.isObject || sizeOf(t) > 1) return null;
+    const d = DIRS[dirToward(centerOf(a, from), t)], x = t.x + d[0], y = t.y + d[1], dest = tileAt(x, y);
+    if (!dest) return state.edgeFall ? { x, y, kind: 'fall' } : null;
+    const T = TERRAIN[dest.type];
+    if (T.void) return { x, y, kind: 'fall' };
+    if (unitAt(x, y) || dest.gate) return null;
+    if (T.cloud) return altAt(t, x, y) ? { x, y, kind: 'push' } : { x, y, kind: 'fall' };
+    if (!altAt(t, x, y) && (T.blocked || dest.h - H(t.x, t.y) > 1)) return null;   // 壁や段差にぶつかる
+    if (altAt(t, x, y) && topH(x, y) - topH(t.x, t.y) > (t.C.climb ?? 0)) return null;
+    return { x, y, kind: T.hazard === 'lava' ? 'lava' : 'push' };
+  }
+
+  async function knockback(a, t) {
+    const k = knockDest(a, a, t);
+    if (!k || t.dead) return;
+    const from = { x: t.x, y: t.y }, h0 = footH(from.x, from.y, 1), now = performance.now();
+    if (k.kind === 'fall') {
+      // 端の外へ飛ばされ、下へ落ちて消える
+      const flyer = altOf(t) > 0 || grounded(t);
+      state.hint = flyer ? `${t.name}は奈落へ吹き飛ばされ、戦線を離脱した！` : `${t.name}は奈落へ落ちていった…`;
+      updateHUD();
+      t.moving = true;
+      await tween(260, p => { t.rx = lerp(from.x, k.x, p * 0.7); t.ry = lerp(from.y, k.y, p * 0.7); t.sortKey = Math.max(from.x + from.y, k.x + k.y); });
+      await tween(700, p => { t.rh = h0 - p * p * 14; t.gh = -99; t.alpha = 1 - p; });
+      t.dead = true;
+      t.fell = true;
+      t.gone = true;
+      t.moving = false;
+      return;
+    }
+    state.hint = `${t.name}は吹き飛ばされた！`;
+    const h1 = footH(k.x, k.y, 1);
+    await tween(200, p => {
+      t.rx = lerp(from.x, k.x, p);
+      t.ry = lerp(from.y, k.y, p);
+      t.gh = lerp(h0, h1, p);
+      t.rh = t.gh + Math.sin(Math.PI * p) * 0.8;
+      t.sortKey = Math.max(from.x + from.y, k.x + k.y);
+    });
+    t.x = k.x; t.y = k.y;
+    t.rx = t.x; t.ry = t.y; t.rh = t.gh = h1;
+    t.sortKey = null;
+    effects.push({ kind: 'spark', at: [t.x, t.y, h1 + altOf(t)], t0: now, until: now + 220 });
+    // 高いところから落とされると落下の被害（2 段を超えた分 × 最大 HP の 10%）
+    const drop = h0 - h1;
+    if (drop > 2 && !altOf(t)) {
+      const dmg = Math.round(t.maxHp * 0.1 * (drop - 2));
+      t.hp = Math.max(0, t.hp - dmg);
+      popups.push({ u: t, h: h1, text: String(dmg), color: '#ffd0a0', t0: performance.now() });
+    }
+    await applyHazard(t);
   }
 
   // ---------------------------------------------------------------- 地形の被害（溶岩）
@@ -1867,6 +1973,9 @@
           const fc = forecast(u, t, s, pos);
           let score = fc.dmg * fc.hit / 100 - s.c * 0.3 - danger(s) * (P.danger || 0) - hazardDmg(u, s);
           if (!t.isObject) score += (fc.dmg >= t.hp ? P.killBonus ?? 60 : 0) + (P.preferWeak || 0) * (1 - t.hp / t.maxHp);
+          // 奈落へ突き落とせるなら撃破と同等、溶岩へ押し込めるなら大きく加点
+          const kd = !t.isObject && fc.dmg < t.hp && knockDest(u, s, t);
+          if (kd) score += (kd.kind === 'fall' ? P.killBonus ?? 60 : kd.kind === 'lava' ? 30 : 0) * fc.hit / 100;
           else score *= 0.6;                                              // 城門より兵を優先
           if (u.C.type !== 'melee') score += nearest * (P.keepAway ?? 2); // 射手は距離を取る
           if (!best || score > best.score) best = { s, t, pos, score };
@@ -2305,6 +2414,9 @@
     });
     parent.postMessage({ type: 'tactics-preview-ready' }, '*');
   }
+
+  // 開発用：?debug で内部状態をコンソールから覗けるようにする
+  if (PARAMS.has('debug')) window.__tactics = { state, units: () => units, tiles: () => tiles, computeReach, aiOf };
 
   const requested = MAPS.find(m => m.id === PARAMS.get('map'));
   if (PREVIEW) startPreview();
