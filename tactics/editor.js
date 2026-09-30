@@ -28,7 +28,7 @@
   const TCOL = Object.fromEntries(TERRAINS.map(t => [t.code, t.color]));
   const TNAME = Object.fromEntries(TERRAINS.map(t => [t.code, t.name]));
   const CLASSES = [
-    ['knight', 'ナイト', '騎'], ['soldier', 'ソルジャー', '兵'], ['archer', 'アーチャー', '弓'], ['wizard', 'ウィザード', '魔'],
+    ['knight', 'ナイト', '騎'], ['soldier', 'ソルジャー', '兵'], ['archer', 'アーチャー', '弓'], ['wizard', 'ウィザード', '魔'], ['shieldKnight', 'シールドナイト（2 マス吹き飛ばし）', '盾'],
     ['goblin', 'ゴブリン', 'ゴ'], ['wolf', 'ウルフ', '狼'], ['orc', 'オーク', 'オ'], ['golem', 'ゴーレム', '巨'],
     ['fairy', '妖精（低空）', '妖'], ['pegasus', 'ペガサス（中空）', '天'], ['pegasusKnight', 'ペガサスナイト（中空）', '天'],
     ['griffon', 'グリフォン（高空）', '鷲'], ['griffonRider', 'グリフォンライダー（高空）', '鷲'], ['garuda', 'ガルーダ（最高空）', '鳥'],

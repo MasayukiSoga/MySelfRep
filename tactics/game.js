@@ -428,6 +428,11 @@
     soldier: { name: 'ソルジャー', sprite: 'fighter', hp: 82, mp: 8, atk: 26, def: 15, agi: 10, move: 4, jump: 2, range: [1, 1], wt: 100, type: 'melee' },
     archer: { name: 'アーチャー', sprite: 'fighter', hp: 66, mp: 10, atk: 23, def: 10, agi: 13, move: 4, jump: 2, range: [2, 4], wt: 95, type: 'bow' },
     wizard: { name: 'ウィザード', sprite: 'caster', hp: 56, mp: 48, atk: 30, def: 8, agi: 9, move: 3, jump: 1, range: [1, 3], wt: 105, type: 'magic' },
+    // 両手に盾：攻撃は弱いが、当たると必ず 1 マス、knockback2 の確率でさらに 1 マス吹き飛ばす
+    shieldKnight: {
+      name: 'シールドナイト', sprite: 'shielder', hp: 104, mp: 8, atk: 22, def: 26, agi: 8, move: 4, jump: 2,
+      range: [1, 1], wt: 105, type: 'melee', knockback: 1, knockback2: 0.45,
+    },
     // 魔物はチーム色ではなく固有の配色（pal）
     goblin: {
       name: 'ゴブリン', sprite: 'goblin', hp: 48, mp: 0, atk: 21, def: 8, agi: 12, move: 4, jump: 2, range: [1, 1], wt: 90, type: 'melee',
@@ -557,6 +562,31 @@
         '..ohbo....ohbo..',
         '..ohbo....ohbo..',
         '..oooo....oooo..',
+      ],
+    },
+    shielder: {
+      head: [4, 6], feet: 15,
+      rows: [
+        '................',
+        '......oooo......',
+        '.....ohhhho.....',
+        '....ohhhhhho....',
+        '....ohsssshho...',
+        '....osksskso....',
+        '.....osssso.....',
+        'oooo.occcco.oooo',
+        'oqqoaaccccaaoqqo',
+        'oqgqoabaabaoqgqo',
+        'oqgqoabaabaoqgqo',
+        'oqqoooaggaoooqqo',
+        'oqqo.oaaaao.oqqo',
+        'oqqo.obbbbo.oqqo',
+        'oooo.oaaaao.oooo',
+        '.....oaooao.....',
+        '.....oloolo.....',
+        '.....oloolo.....',
+        '....oolooloo....',
+        '....ooo..ooo....',
       ],
     },
     fairy: {
@@ -704,10 +734,12 @@
     player: {
       fighter: { a: '#4a74d8', b: '#2c4aa8', c: '#f0e8d0' }, caster: { a: '#6a7ae8', b: '#3a48b0', c: '#2c3890' },
       pegasusKnight: { a: '#5a84e8', b: '#2c4aa8', c: '#f0e8d0' }, griffonRider: { a: '#4a74d8', b: '#2c4aa8', c: '#f0e8d0' },
+      shielder: { a: '#4a74d8', b: '#2c4aa8', c: '#f0e8d0', q: '#b8c0d0' },
     },
     enemy: {
       fighter: { a: '#c84a3c', b: '#842a24', c: '#3a2c30' }, caster: { a: '#c05050', b: '#842c2c', c: '#4a1a24' },
       pegasusKnight: { a: '#d05a48', b: '#842a24', c: '#3a2c30' }, griffonRider: { a: '#c84a3c', b: '#842a24', c: '#3a2c30' },
+      shielder: { a: '#c84a3c', b: '#842a24', c: '#3a2c30', q: '#a8a0a0' },
     },
   };
 
@@ -1489,9 +1521,12 @@
           `<div class="row">命中率 <b>${f.hit}%</b></div>` +
           `<div class="row">ダメージ <b>${f.dmg}</b></div>` +
           `<div class="row"><span class="rel">${(() => {
-            const kd = knockDest(active, active, tgt);
+            const kd = knockDest(active, active, tgt), kf = knockFar(active, active, tgt);
+            const pct = Math.round((active.C.knockback2 || 0) * 100);
             if (kd?.kind === 'fall') return '<span class="st">突き落とし!</span>';
-            if (kd?.kind === 'lava') return '<span class="st">溶岩へ押し込む</span>';
+            if (kf?.kind === 'fall') return `<span class="st">突き落とし ${pct}%</span>`;
+            if (kd?.kind === 'lava' || kf?.kind === 'lava') return '<span class="st">溶岩へ押し込む</span>';
+            if (kf && kf.steps.length > (kd?.steps.length || 0)) return `吹き飛ばし 1〜${kf.steps.length}`;
             if (kd) return '吹き飛ばし';
             return f.magic ? `MP ${MAGIC_COST} 消費` : REL[f.rel];
           })()}</span></div>`;
@@ -1777,57 +1812,89 @@
   // knockback を持つクラスの攻撃が当たると、相手を攻撃の向きに 1 マス押す（大型ユニット・構造物は動かない）。
   // 奈落・マップの外（rules.edgeFall）へ押し出されると転落：飛行ユニットは戦線離脱、地上ユニットは即退場。
   // 雲海へ押されると地上ユニットは転落、飛行ユニットはそのまま飛ぶ。相手や壁に当たると押せない
-  function knockDest(a, from, t) {
-    if (!a.C.knockback || t.isObject || sizeOf(t) > 1) return null;
-    const d = DIRS[dirToward(centerOf(a, from), t)], x = t.x + d[0], y = t.y + d[1], dest = tileAt(x, y);
+  // 1 マス押したときの行き先。null は壁・段差・相手・城門に当たって押せない
+  function knockStep(t, cur, d) {
+    const x = cur.x + d[0], y = cur.y + d[1], dest = tileAt(x, y);
     if (!dest) return state.edgeFall ? { x, y, kind: 'fall' } : null;
     const T = TERRAIN[dest.type];
     if (T.void) return { x, y, kind: 'fall' };
-    if (unitAt(x, y) || dest.gate) return null;
+    if ((unitAt(x, y) && unitAt(x, y) !== t) || dest.gate) return null;
     if (T.cloud) return altAt(t, x, y) ? { x, y, kind: 'push' } : { x, y, kind: 'fall' };
-    if (!altAt(t, x, y) && (T.blocked || dest.h - H(t.x, t.y) > 1)) return null;   // 壁や段差にぶつかる
-    if (altAt(t, x, y) && topH(x, y) - topH(t.x, t.y) > (t.C.climb ?? 0)) return null;
+    if (!altAt(t, x, y) && (T.blocked || dest.h - H(cur.x, cur.y) > 1)) return null;   // 壁や段差にぶつかる
+    if (altAt(t, x, y) && topH(x, y) - topH(cur.x, cur.y) > (t.C.climb ?? 0)) return null;
     return { x, y, kind: T.hazard === 'lava' ? 'lava' : 'push' };
   }
 
+  // dist マス押したときの結果 { steps: [通るマス…], x, y, kind }。途中で止まればそこまで、奈落なら転落
+  function knockPath(a, from, t, dist) {
+    if (!a.C.knockback || t.isObject || sizeOf(t) > 1) return null;
+    const d = DIRS[dirToward(centerOf(a, from), t)], steps = [];
+    let cur = { x: t.x, y: t.y }, res = null;
+    for (let i = 0; i < dist; i++) {
+      const r = knockStep(t, cur, d);
+      if (!r) break;
+      steps.push({ x: r.x, y: r.y });
+      res = { ...r, steps };
+      if (r.kind === 'fall') break;
+      cur = r;
+    }
+    return res;
+  }
+  // 基本の距離で押したときの結果（予測・AI 用）。knockback2 はもう 1 マス押す確率
+  const knockDest = (a, from, t) => knockPath(a, from, t, a.C.knockback || 0);
+  const knockFar = (a, from, t) => a.C.knockback2 ? knockPath(a, from, t, (a.C.knockback || 0) + 1) : null;
+
   async function knockback(a, t) {
-    const k = knockDest(a, a, t);
-    if (!k || t.dead) return;
+    if (t.dead || !a.C.knockback) return;
+    const far = Math.random() < (a.C.knockback2 || 0);
+    const k = knockPath(a, a, t, a.C.knockback + (far ? 1 : 0));
+    if (!k) return;
     const from = { x: t.x, y: t.y }, h0 = footH(from.x, from.y, 1), now = performance.now();
+    const moves = k.steps.length - (k.kind === 'fall' ? 1 : 0);
+    if (k.kind !== 'fall') {
+      state.hint = moves > 1 ? `${t.name}は ${moves} マス吹き飛ばされた！` : `${t.name}は吹き飛ばされた！`;
+      updateHUD();
+    }
+    // 1 マスずつ滑らせる（転落するマスの手前まで）
+    let px = from.x, py = from.y, ph = h0;
+    for (const st of k.steps) {
+      if (k.kind === 'fall' && st === k.steps[k.steps.length - 1]) break;
+      const h1 = footH(st.x, st.y, 1);
+      await tween(170, p => {
+        t.rx = lerp(px, st.x, p);
+        t.ry = lerp(py, st.y, p);
+        t.gh = lerp(ph, h1, p);
+        t.rh = t.gh + Math.sin(Math.PI * p) * 0.8;
+        t.sortKey = Math.max(px + py, st.x + st.y);
+      });
+      px = st.x; py = st.y; ph = h1;
+    }
     if (k.kind === 'fall') {
       // 端の外へ飛ばされ、下へ落ちて消える
       const flyer = altOf(t) > 0 || grounded(t);
       state.hint = flyer ? `${t.name}は奈落へ吹き飛ばされ、戦線を離脱した！` : `${t.name}は奈落へ落ちていった…`;
       updateHUD();
       t.moving = true;
-      await tween(260, p => { t.rx = lerp(from.x, k.x, p * 0.7); t.ry = lerp(from.y, k.y, p * 0.7); t.sortKey = Math.max(from.x + from.y, k.x + k.y); });
-      await tween(700, p => { t.rh = h0 - p * p * 14; t.gh = -99; t.alpha = 1 - p; });
+      await tween(240, p => { t.rx = lerp(px, k.x, p * 0.7); t.ry = lerp(py, k.y, p * 0.7); t.sortKey = Math.max(px + py, k.x + k.y); });
+      await tween(700, p => { t.rh = ph - p * p * 14; t.gh = -99; t.alpha = 1 - p; });
       t.dead = true;
       t.fell = true;
       t.gone = true;
       t.moving = false;
       return;
     }
-    state.hint = `${t.name}は吹き飛ばされた！`;
-    const h1 = footH(k.x, k.y, 1);
-    await tween(200, p => {
-      t.rx = lerp(from.x, k.x, p);
-      t.ry = lerp(from.y, k.y, p);
-      t.gh = lerp(h0, h1, p);
-      t.rh = t.gh + Math.sin(Math.PI * p) * 0.8;
-      t.sortKey = Math.max(from.x + from.y, k.x + k.y);
-    });
     t.x = k.x; t.y = k.y;
-    t.rx = t.x; t.ry = t.y; t.rh = t.gh = h1;
+    t.rx = t.x; t.ry = t.y; t.rh = t.gh = ph;
     t.sortKey = null;
-    effects.push({ kind: 'spark', at: [t.x, t.y, h1 + altOf(t)], t0: now, until: now + 220 });
+    effects.push({ kind: 'spark', at: [t.x, t.y, ph + altOf(t)], t0: now, until: now + 220 });
     // 高いところから落とされると落下の被害（2 段を超えた分 × 最大 HP の 10%）
-    const drop = h0 - h1;
+    const drop = h0 - ph;
     if (drop > 2 && !altOf(t)) {
       const dmg = Math.round(t.maxHp * 0.1 * (drop - 2));
       t.hp = Math.max(0, t.hp - dmg);
-      popups.push({ u: t, h: h1, text: String(dmg), color: '#ffd0a0', t0: performance.now() });
+      popups.push({ u: t, h: ph, text: String(dmg), color: '#ffd0a0', t0: performance.now() });
     }
+    await wait(350);
     await applyHazard(t);
   }
 
@@ -1974,8 +2041,11 @@
           let score = fc.dmg * fc.hit / 100 - s.c * 0.3 - danger(s) * (P.danger || 0) - hazardDmg(u, s);
           if (!t.isObject) score += (fc.dmg >= t.hp ? P.killBonus ?? 60 : 0) + (P.preferWeak || 0) * (1 - t.hp / t.maxHp);
           // 奈落へ突き落とせるなら撃破と同等、溶岩へ押し込めるなら大きく加点
-          const kd = !t.isObject && fc.dmg < t.hp && knockDest(u, s, t);
-          if (kd) score += (kd.kind === 'fall' ? P.killBonus ?? 60 : kd.kind === 'lava' ? 30 : 0) * fc.hit / 100;
+          if (!t.isObject && fc.dmg < t.hp && u.C.knockback) {
+            const val = k => k?.kind === 'fall' ? P.killBonus ?? 60 : k?.kind === 'lava' ? 30 : 0;
+            const p2 = u.C.knockback2 || 0;
+            score += ((1 - p2) * val(knockDest(u, s, t)) + p2 * val(knockFar(u, s, t) || knockDest(u, s, t))) * fc.hit / 100;
+          }
           else score *= 0.6;                                              // 城門より兵を優先
           if (u.C.type !== 'melee') score += nearest * (P.keepAway ?? 2); // 射手は距離を取る
           if (!best || score > best.score) best = { s, t, pos, score };

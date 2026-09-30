@@ -35,5 +35,5 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 開発用: `?debug` を付けると `window.__tactics`（state / units / tiles / computeReach / aiOf）から内部状態を覗ける。
 - 天井: `rules.ceiling` / `rules.ceilingAreas`。`altAt` が「天井 − 足場 − 1」と fly の小さい方を返し、minFly 未満なら 0（飛べない）。飛べない飛行ユニットは `grounded`、移動は `moveOf`（groundMove）と `stepOk` の地上ルール（groundJump）。飛行中は天井が低くて飛べないマスには入れない。イベント `ceiling` で変更可。
 - 地形の被害: 溶岩（`TERRAIN.lava.hazard`）の上で移動を終えるか手番を迎えると `applyHazard`（地上 80% / 飛行 30% / fireRes 無傷）。AI は倒れるマスを除き、被害のあるマスを嫌う。
-- 奈落（void：誰も入れない・描かない）と雲海（cloud：飛行のみ）。`knockback` を持つクラスの攻撃が当たると `knockDest` の方向へ 1 マス押し、奈落・マップ外（`rules.edgeFall`）へ出ると転落（`dead && fell`、撃破扱い）。地上ユニットは雲海へ押されても転落。AI は突き落とせる攻撃を撃破と同等に評価。`rules.floating` で陸地の下に岩の底を描く。背景は `bg`（night / cave / sky）。
+- 奈落（void：誰も入れない・描かない）と雲海（cloud：飛行のみ）。`knockback` を持つクラスの攻撃が当たると、攻撃の向きへ `knockPath` で 1 マスずつ押し（壁・段差・相手・城門に当たればそこで止まる。`knockback2` はもう 1 マス押す確率で、シールドナイトは 45%）、奈落・マップ外（`rules.edgeFall`）へ出ると転落（`dead && fell`、撃破扱い）。地上ユニットは雲海へ押されても転落。AI は突き落とせる攻撃を撃破と同等に評価。`rules.floating` で陸地の下に岩の底を描く。背景は `bg`（night / cave / sky）。
 - ミニマップ（M）は `drawMinimap`。描画は画面内のマスだけを並べ替え、`threatMap` は射程の届く範囲だけを調べるので 64×64 まで実用的。

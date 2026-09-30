@@ -15,6 +15,7 @@
 //           ラウンドは WT の経過 100 ごとに 1 進む（全員がおよそ 1 回ずつ行動する長さ）
 // reinforcements: [{ round, text, units: [...] }] 指定ラウンドに入ると増援が出現
 // units   : team は 'player' / 'enemy'。cls は knight / soldier / archer / wizard / goblin / wolf / orc / golem、
+//           shieldKnight シールドナイト（両手に盾。当たると 1 マス、45% でさらに 1 マス吹き飛ばす）、
 //           飛行: fairy 妖精（低空）/ pegasus・pegasusKnight（中空）/ griffon・griffonRider（高空）/ garuda（最高空）。
 //           騎乗兵（pegasusKnight / griffonRider）はチーム色の鎧、それ以外の魔物は固有の配色
 //           golem は 4×4 マスを占有する大型ユニット。x, y は占有範囲の奥の角（x, y が最小のマス）
@@ -31,7 +32,8 @@
 //           { floating: 3 } 陸地の下に岩の底を描いて浮島に見せる（段数）
 //           { edgeFall: true } マップの外へ押し出されると奈落と同じく転落する
 // bg      : 背景 'night'（既定）/ 'cave'（洞窟）/ 'sky'（高空）
-// 吹き飛ばし: ゴーレム・オーク・グリフォン・グリフォンライダー・ガルーダ・妖精の攻撃は、当たると相手を 1 マス押す
+// 吹き飛ばし: ゴーレム・オーク・グリフォン・グリフォンライダー・ガルーダ・妖精の攻撃は、当たると相手を 1 マス押す。
+//           シールドナイトは 1 マス＋45% でもう 1 マス
 // events  : [{ when: 条件, do: [アクション…] }] 条件を満たした時点で 1 回だけ実行（移動・攻撃の後とターン開始時に判定）
 //           対象の指定（unit / target）: ユニットの id か name、または '@enemy' / '@player' / '@all'（except で除外）
 //           条件: { type: 'reach', unit, area } 到達 / { type: 'defeated', unit } 撃破（'@enemy' なら全滅）
@@ -618,7 +620,7 @@ window.TACTICS_MAPS = [
   {
     id: 'garden',
     name: '空中庭園',
-    desc: '雲の上に浮かぶ庭園。島の外は奈落で、強風のため飛行ユニットも飛べない。オーク・グリフォン・ガルーダ・妖精の攻撃は相手を吹き飛ばし、奈落へ落とせばガルーダでも戦線離脱、地上の兵は転落する。',
+    desc: '雲の上に浮かぶ庭園。島の外は奈落で、強風のため飛行ユニットも飛べない。オーク・グリフォン・ガルーダ・妖精・シールドナイトの攻撃は相手を吹き飛ばし、奈落へ落とせばガルーダでも戦線離脱、地上の兵は転落する。',
     objective: { type: 'leader', text: '天空卿 ヴェルザの撃破' },
     bg: 'sky',
     rules: { floating: 3, edgeFall: true },
@@ -668,6 +670,7 @@ window.TACTICS_MAPS = [
       { name: 'ガルド', cls: 'soldier', team: 'player', x: 4, y: 14, lv: 5, hair: '#503828', facing: 3 },
       { name: 'セリカ', cls: 'archer', team: 'player', x: 1, y: 14, lv: 4, hair: '#e8d070', facing: 3 },
       { name: 'ミラ', cls: 'wizard', team: 'player', x: 2, y: 16, lv: 4, hair: '#b05a30', facing: 3 },
+      { name: 'ボルス', cls: 'shieldKnight', team: 'player', x: 0, y: 13, lv: 5, hair: '#806040', facing: 3 },
       { name: 'ティナ', cls: 'fairy', team: 'player', x: 3, y: 15, lv: 5, hair: '#f0e070', facing: 3 },
       { name: 'シエル', cls: 'pegasusKnight', team: 'player', x: 5, y: 15, lv: 5, hair: '#e0c0f0', facing: 3 },
       { name: 'ヴェルザ', cls: 'knight', team: 'enemy', x: 16, y: 2, lv: 7, hair: '#e0e0f0', facing: 1, leader: true },
