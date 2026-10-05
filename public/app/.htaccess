@@ -1,0 +1,8 @@
+# 念のためディレクトリ単位でも全面拒否（上位 .htaccess が効かない場合の保険）
+<IfModule mod_authz_core.c>
+  Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+  Order allow,deny
+  Deny from all
+</IfModule>

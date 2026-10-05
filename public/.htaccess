@@ -1,0 +1,25 @@
+# さくらのレンタルサーバ（Apache）用設定
+
+AddHandler cgi-script .cgi
+Options +ExecCGI -Indexes
+DirectoryIndex index.cgi
+
+AddDefaultCharset UTF-8
+
+# アプリのソース・設定・SQL・ドキュメントは絶対に公開しない
+<FilesMatch "\.(py|pyc|ini|sql|md|log|key|sample)$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</FilesMatch>
+
+# 静的ファイルはキャッシュさせる
+<FilesMatch "\.(css|js|svg|png|ico)$">
+  <IfModule mod_headers.c>
+    Header set Cache-Control "max-age=86400"
+  </IfModule>
+</FilesMatch>
