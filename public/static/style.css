@@ -234,3 +234,58 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .trace { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; font-size: 0.8rem; }
 
 .foot { text-align: center; color: var(--muted); font-size: 0.8rem; padding: 24px 16px; }
+
+/* --- 複数人利用で追加した要素 --- */
+
+.account { display: flex; align-items: center; gap: 14px; font-size: 0.88rem; }
+.account a { text-decoration: none; }
+
+.badge {
+  display: inline-block;
+  background: var(--accent);
+  color: var(--accent-text);
+  border-radius: 999px;
+  padding: 1px 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+.badge.stop { background: var(--danger); }
+.badge.self { background: var(--muted); }
+
+.notice.info {
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  color: var(--text);
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin: 16px 0;
+}
+.panel.narrow { max-width: 420px; margin: 40px auto; }
+.panel h2 { font-size: 1.02rem; margin: 0 0 12px; }
+
+.stack { display: grid; gap: 14px; }
+
+.alt { font-size: 0.88rem; color: var(--muted); margin: 10px 0 0; }
+.panel .alt { margin-bottom: 12px; }
+
+.scope { font-size: 0.85rem; color: var(--muted); margin: 0 0 10px; }
+
+.owner {
+  font-size: 0.78rem;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 10px;
+  color: var(--muted);
+}
+
+.card-head { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.row-actions.wrap { flex-wrap: wrap; align-items: center; }
+.muted.small { font-size: 0.8rem; }

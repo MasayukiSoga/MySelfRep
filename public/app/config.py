@@ -23,7 +23,6 @@ class Config(object):
             )
 
         parser = configparser.ConfigParser()
-        # 値にコロンやセミコロンが入っても壊れないよう区切りは '=' だけにする
         parser.read(self.path, encoding="utf-8")
         self._parser = parser
 
@@ -36,26 +35,20 @@ class Config(object):
             raise ConfigError("config.ini の [database] host / name / user を設定してください。")
 
         self.title = self._get("app", "title", "ゲーム情報管理")
-        self.login_required = self._bool("app", "login_required", True)
-        self.password_hash = self._get("app", "password_hash")
-        self.plain_password = self._get("app", "password")
+        self.allow_signup = self._bool("app", "allow_signup", True)
+        self.invite_code = self._get("app", "invite_code")
         self.per_page = max(5, min(100, int(self._get("app", "per_page", "20") or 20)))
         self.auto_migrate = self._bool("app", "auto_migrate", True)
         self.secret_key = self._get("app", "secret_key") or self._load_or_create_secret()
 
-        if self.login_required and not (self.password_hash or self.plain_password):
+        if self.allow_signup and not self.invite_code:
             raise ConfigError(
-                "login_required = true ですが password_hash / password が未設定です。"
-                "tools/make_password.py でハッシュを生成して config.ini に貼ってください。"
+                "allow_signup = true ですが invite_code が未設定です。"
+                "tools/make_secrets.py で招待コードを生成して config.ini に設定してください。"
             )
-        if self.plain_password and not self.password_hash:
+        if self.invite_code and len(self.invite_code) < 8:
             self.warnings.append(
-                "パスワードが平文で config.ini に保存されています。"
-                "tools/make_password.py でハッシュに置き換えてください。"
-            )
-        if not self.login_required:
-            self.warnings.append(
-                "login_required = false のため、URL を知る誰でもデータを変更できます。"
+                "招待コードが短すぎます。推測されにくい 12 文字以上にしてください。"
             )
 
     def _get(self, section, option, default=""):
@@ -96,5 +89,5 @@ class Config(object):
                 "secret_key が未設定で private/secret.key も作成できませんでした。"
                 "config.ini に secret_key を設定してください。"
             )
-            seed = "|".join([self.db_password, self.password_hash, self.plain_password, self.db_name])
+            seed = "|".join([self.db_password, self.invite_code, self.db_name])
             return hashlib.sha256(seed.encode("utf-8")).hexdigest()

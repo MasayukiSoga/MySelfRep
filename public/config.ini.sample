@@ -15,21 +15,20 @@ password =
 ; 画面に出すアプリ名
 title = ゲーム情報管理
 
-; Cookie の署名に使う秘密鍵。tools/make_password.py で生成できる。
+; Cookie の署名に使う秘密鍵。tools/make_secrets.py で生成できる。
 ; 空のままだと private/secret.key を自動生成して使う。
 secret_key =
 
-; ログイン必須にするか（インターネット公開時は必ず true）
-login_required = true
+; 新規登録を受け付けるか。全員の登録が済んだら false にすると登録を閉じられる。
+allow_signup = true
 
-; ログインパスワード。どちらか一方を設定する。
-;   password_hash … tools/make_password.py が出力する文字列（推奨）
-;   password      … 平文（お試し用。設定すると画面に警告が出る）
-password_hash =
-password =
+; 招待コード。これを知っている人だけがアカウントを作成できる。
+; tools/make_secrets.py で生成するか、推測されにくい文字列を自分で決める。
+; 最初に登録した人が自動的に管理者になる。
+invite_code =
 
-; 一覧 1 ページあたりの件数
+; 一覧 1 ページあたりの件数（5〜100）
 per_page = 20
 
-; 起動時に games テーブルが無ければ自動作成する
+; 起動時に users / games テーブルが無ければ自動作成する
 auto_migrate = true

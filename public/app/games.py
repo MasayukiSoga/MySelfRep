@@ -1,22 +1,29 @@
 # -*- coding: utf-8 -*-
 """games テーブルに対する登録・修正・削除・問合（検索）。
 
+owner_id を指定すると、その利用者が登録した行だけを対象にする。
+管理者は owner_id を None にして呼ぶことで全データを扱える。
+一般利用者の経路では必ず owner_id を渡すため、URL の id を書き換えても
+他人のデータには触れられない。
+
 SQL は全てプレースホルダ経由。並び替えのカラム名は許可リストで固定し、
 文字列連結でユーザ入力を SQL に混ぜない。
 """
 import datetime
 import decimal
 
+from .errors import ValidationError
+
 STATUS_CHOICES = ["未プレイ", "プレイ中", "クリア", "中断", "積み"]
 OWN_CHOICES = ["パッケージ", "ダウンロード", "サブスク", "レンタル", "未所有"]
 
 # 画面に出す並び替えの選択肢 -> 実際の ORDER BY 句
 SORT_COLUMNS = {
-    "updated": ("updated_at", "更新日時"),
-    "title": ("title_kana, title", "タイトル"),
-    "release": ("release_date", "発売日"),
-    "rating": ("rating", "評価"),
-    "hours": ("play_hours", "プレイ時間"),
+    "updated": ("g.updated_at", "更新日時"),
+    "title": ("g.title_kana, g.title", "タイトル"),
+    "release": ("g.release_date", "発売日"),
+    "rating": ("g.rating", "評価"),
+    "hours": ("g.play_hours", "プレイ時間"),
 }
 DEFAULT_SORT = "updated"
 
@@ -32,12 +39,21 @@ MAX_LENGTHS = {
     "note": 60000,
 }
 
+FIELDS = (
+    "title", "title_kana", "platform", "genre", "maker", "release_date",
+    "status", "rating", "play_hours", "own_type", "tags", "note",
+)
 
-class ValidationError(Exception):
-    def __init__(self, errors):
-        super(ValidationError, self).__init__("入力内容を確認してください")
-        self.errors = errors
+# 登録者名を一緒に取るための結合。count でも同じ条件式を使えるようにしておく。
+_FROM = "FROM games g LEFT JOIN users u ON u.id = g.user_id"
 
+
+def _now():
+    """DB に渡す現在時刻。ドライバ非依存にするため文字列で扱う。"""
+    return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+# --- 入力検証 -------------------------------------------------------------
 
 def parse_form(request):
     """フォーム入力を検証して、DB に渡せる dict にする。"""
@@ -105,21 +121,12 @@ def parse_form(request):
     return data
 
 
-FIELDS = (
-    "title", "title_kana", "platform", "genre", "maker", "release_date",
-    "status", "rating", "play_hours", "own_type", "tags", "note",
-)
+# --- 更新系（すべて owner_id で範囲を限定できる） -------------------------
 
-
-def _now():
-    """DB に渡す現在時刻。ドライバ非依存にするため文字列で扱う。"""
-    return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-
-def insert(db, data):
+def insert(db, user_id, data):
+    columns = ["user_id"] + list(FIELDS) + ["created_at", "updated_at"]
     now = _now()
-    columns = list(FIELDS) + ["created_at", "updated_at"]
-    values = [data[name] for name in FIELDS] + [now, now]
+    values = [user_id] + [data[name] for name in FIELDS] + [now, now]
     sql = "INSERT INTO games (%s) VALUES (%s)" % (
         ", ".join(columns),
         ", ".join(["%s"] * len(columns)),
@@ -128,22 +135,47 @@ def insert(db, data):
     return new_id
 
 
-def update(db, game_id, data):
+def update(db, game_id, data, owner_id=None):
     assignments = ", ".join("%s = %%s" % name for name in FIELDS)
-    values = [data[name] for name in FIELDS] + [_now(), game_id]
     sql = "UPDATE games SET %s, updated_at = %%s WHERE id = %%s" % assignments
+    values = [data[name] for name in FIELDS] + [_now(), game_id]
+    if owner_id is not None:
+        sql += " AND user_id = %s"
+        values.append(owner_id)
     affected, _ = db.execute(sql, values)
     return affected
 
 
-def delete(db, game_id):
-    affected, _ = db.execute("DELETE FROM games WHERE id = %s", (game_id,))
+def delete(db, game_id, owner_id=None):
+    sql = "DELETE FROM games WHERE id = %s"
+    params = [game_id]
+    if owner_id is not None:
+        sql += " AND user_id = %s"
+        params.append(owner_id)
+    affected, _ = db.execute(sql, params)
     return affected
 
 
-def find(db, game_id):
-    return db.query_one("SELECT * FROM games WHERE id = %s", (game_id,))
+def delete_all_of(db, owner_id):
+    affected, _ = db.execute("DELETE FROM games WHERE user_id = %s", (owner_id,))
+    return affected
 
+
+def find(db, game_id, owner_id=None):
+    if not game_id:
+        return None
+    sql = (
+        "SELECT g.*, u.username AS owner_username, u.display_name AS owner_display "
+        + _FROM + " WHERE g.id = %s"
+    )
+    params = [game_id]
+    if owner_id is not None:
+        sql += " AND g.user_id = %s"
+        params.append(owner_id)
+    return db.query_one(sql, params)
+
+
+# --- 問合 -----------------------------------------------------------------
 
 def _like(keyword):
     """LIKE のメタ文字をエスケープして部分一致パターンにする。"""
@@ -151,29 +183,40 @@ def _like(keyword):
     return "%" + escaped + "%"
 
 
-def build_conditions(criteria):
+def build_conditions(criteria, owner_id=None):
     where = []
     params = []
+
+    # 一般利用者は常に自分の行だけ。管理者は owner_id=None で全件。
+    if owner_id is not None:
+        where.append("g.user_id = %s")
+        params.append(owner_id)
+    elif criteria.get("owner"):
+        where.append("g.user_id = %s")
+        params.append(criteria["owner"])
+
     if criteria.get("q"):
         pattern = _like(criteria["q"])
-        columns = ("title", "title_kana", "maker", "tags", "note", "platform", "genre")
+        columns = ("g.title", "g.title_kana", "g.maker", "g.tags", "g.note",
+                   "g.platform", "g.genre")
         where.append("(" + " OR ".join("%s LIKE %%s" % c for c in columns) + ")")
         params.extend([pattern] * len(columns))
     if criteria.get("platform"):
-        where.append("platform = %s")
+        where.append("g.platform = %s")
         params.append(criteria["platform"])
     if criteria.get("status"):
-        where.append("status = %s")
+        where.append("g.status = %s")
         params.append(criteria["status"])
+
     clause = (" WHERE " + " AND ".join(where)) if where else ""
     return clause, params
 
 
-def search(db, criteria, page=1, per_page=20):
-    """問合処理。(行リスト, 全件数, ページ数) を返す。"""
-    clause, params = build_conditions(criteria)
+def search(db, criteria, page=1, per_page=20, owner_id=None):
+    """問合処理。(行リスト, 全件数, 現在ページ, 総ページ数) を返す。"""
+    clause, params = build_conditions(criteria, owner_id)
 
-    total_row = db.query_one("SELECT COUNT(*) AS n FROM games" + clause, params)
+    total_row = db.query_one("SELECT COUNT(*) AS n " + _FROM + clause, params)
     total = int(total_row["n"]) if total_row else 0
 
     column, _label = SORT_COLUMNS.get(criteria.get("sort"), SORT_COLUMNS[DEFAULT_SORT])
@@ -184,31 +227,43 @@ def search(db, criteria, page=1, per_page=20):
 
     # NULL は常に末尾へ回したいので is-null 判定を第 1 ソートキーにする
     sql = (
-        "SELECT * FROM games%s ORDER BY (%s IS NULL) ASC, %s %s, id DESC LIMIT %%s OFFSET %%s"
-        % (clause, column.split(",")[0], column, direction)
+        "SELECT g.*, u.username AS owner_username, u.display_name AS owner_display "
+        + _FROM + clause
+        + " ORDER BY (%s IS NULL) ASC, %s %s, g.id DESC LIMIT %%s OFFSET %%s"
+        % (column.split(",")[0], column, direction)
     )
     rows = db.query(sql, params + [per_page, offset])
     return rows, total, page, pages
 
 
-def all_for_export(db, criteria):
-    clause, params = build_conditions(criteria)
+def all_for_export(db, criteria, owner_id=None):
+    clause, params = build_conditions(criteria, owner_id)
     return db.query(
-        "SELECT * FROM games" + clause + " ORDER BY title_kana, title, id", params
+        "SELECT g.*, u.username AS owner_username, u.display_name AS owner_display "
+        + _FROM + clause + " ORDER BY g.title_kana, g.title, g.id",
+        params,
     )
 
 
-def distinct_platforms(db):
+def distinct_platforms(db, owner_id=None):
+    clause, params = build_conditions({}, owner_id)
+    extra = " AND g.platform <> ''" if clause else " WHERE g.platform <> ''"
     rows = db.query(
-        "SELECT platform FROM games WHERE platform <> '' "
-        "GROUP BY platform ORDER BY COUNT(*) DESC, platform LIMIT 100"
+        "SELECT g.platform AS platform " + _FROM + clause + extra
+        + " GROUP BY g.platform ORDER BY COUNT(*) DESC, g.platform LIMIT 100",
+        params,
     )
     return [row["platform"] for row in rows]
 
 
-def summary(db):
-    """トップに出す件数サマリ。"""
-    rows = db.query("SELECT status, COUNT(*) AS n FROM games GROUP BY status")
+def summary(db, owner_id=None):
+    """一覧の上に出す件数サマリ。"""
+    clause, params = build_conditions({}, owner_id)
+    rows = db.query(
+        "SELECT g.status AS status, COUNT(*) AS n " + _FROM + clause
+        + " GROUP BY g.status",
+        params,
+    )
     counts = dict((row["status"], int(row["n"])) for row in rows)
     counts["合計"] = sum(counts.values())
     return counts
