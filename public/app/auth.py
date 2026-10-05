@@ -20,7 +20,9 @@ PBKDF2_ROUNDS = 200000
 
 # --- パスワード -----------------------------------------------------------
 
-def hash_password(password, salt=None, rounds=PBKDF2_ROUNDS):
+def hash_password(password, salt=None, rounds=None):
+    # 既定値は引数に焼き込まず実行時に読む（検証時に下げられるようにする）
+    rounds = rounds or PBKDF2_ROUNDS
     salt = salt or secrets.token_hex(16)
     digest = hashlib.pbkdf2_hmac(
         "sha256", password.encode("utf-8"), salt.encode("utf-8"), rounds

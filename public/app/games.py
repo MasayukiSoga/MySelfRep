@@ -177,9 +177,16 @@ def find(db, game_id, owner_id=None):
 
 # --- 問合 -----------------------------------------------------------------
 
+# LIKE のエスケープ文字。バックスラッシュは DB によって解釈が異なるため
+# 使わず、ESCAPE 句で明示できる記号を選ぶ。
+LIKE_ESCAPE = "!"
+
+
 def _like(keyword):
     """LIKE のメタ文字をエスケープして部分一致パターンにする。"""
-    escaped = keyword.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    escaped = keyword.replace(LIKE_ESCAPE, LIKE_ESCAPE * 2)
+    escaped = escaped.replace("%", LIKE_ESCAPE + "%")
+    escaped = escaped.replace("_", LIKE_ESCAPE + "_")
     return "%" + escaped + "%"
 
 
@@ -199,7 +206,8 @@ def build_conditions(criteria, owner_id=None):
         pattern = _like(criteria["q"])
         columns = ("g.title", "g.title_kana", "g.maker", "g.tags", "g.note",
                    "g.platform", "g.genre")
-        where.append("(" + " OR ".join("%s LIKE %%s" % c for c in columns) + ")")
+        where.append("(" + " OR ".join(
+            "%s LIKE %%s ESCAPE '%s'" % (c, LIKE_ESCAPE) for c in columns) + ")")
         params.extend([pattern] * len(columns))
     if criteria.get("platform"):
         where.append("g.platform = %s")
