@@ -19,7 +19,9 @@ C# / MonoGame (DesktopGL) simulation game. Single project at `src/MySelfRep/`, o
 - `Core/`: cross-cutting game state.
   - `TurnManager`: turn progression and the per-turn 政治力 (political power) resource that limits how many commands can be used.
   - `PlayerState`: 信望 (world-to-player trust), kept separate from `Character.Hyouka` (player-to-character evaluation) since the design treats them as distinct.
-- `Domain/Command/`: the 8 top-level command categories (`CommandCategory`: 人事/軍事/商人/内政/調略/外交/情報/設定).
+  - `World` / `SampleWorld`: the aggregate game state and placeholder sample data.
+  - `GameScreen` / `TextMenu` / `Labels`: the text-only screen layer. `GameScreen.Render()` returns a `ScreenModel` made entirely of strings (status line, breadcrumb title, body lines, options, selected index, description); input goes through `TapOption(i)` / `TapBack()`. Selecting an option once shows its description, selecting it again confirms (the spec requires the selected command's description to always be visible). The platform renderer only draws these strings, so this layer is the shared contract between the TS prototype and MonoGame. `Game1` does not draw it yet (needs a SpriteFont with Japanese glyphs).
+- `Domain/Command/`: the 8 top-level command categories (`CommandCategory`: 人事/軍事/商人/内政/調略/外交/情報/設定) and the full command tree with per-command descriptions (`CommandNode`, `CommandTree`).
 - `Domain/Map/`: `Base` (any placed map entity — capital, city, dungeon, mine, etc.) and `Position`, the single xy-coordinate source that every map tier (world map, region map) is meant to render from.
 - `Domain/Character/`: `Character` and its `Abilities` (統率/軍事/政治/知略), `Personality`, `Gender`.
 - `Domain/Role/`: `RoleType` (役職) and `StarRank`, the shared ⭐️-accumulation rank used by both ranked roles (近衛/騎士団/魔術師/聖職者/傭兵団) and guilds.
@@ -29,8 +31,9 @@ This is a skeleton only: types mirror what `SPEC.md`'s 決定事項 section has 
 
 ## TypeScript Prototype (temporary)
 
-`web-prototype/` mirrors the same domain types (`Base`/`Position`, `Character`/`Abilities`, `RoleType`/`StarRank`, `GuildType`/`GuildMembership`, `CommandCategory`) 1:1 in TypeScript, so the data model can be checked in a browser/Node without a C# toolchain. It intentionally has no real screen/UI work — `src/main.ts` just dumps sample data as plain text — since the rendering layer doesn't port to MonoGame anyway and isn't worth building twice. Only the parts that map directly onto `src/MySelfRep/Domain` and `Core` are built out here; when a type changes, update both sides.
+`web-prototype/` mirrors `src/MySelfRep/Domain` and `Core` 1:1 in TypeScript (`src/domain/`, `src/core/`, including `GameScreen`/`TextMenu`/`CommandTree`), so the game can be tried in a browser, including on Android, without a C# toolchain. Screens are text only by design: no graphics, since anything graphical would not port to MonoGame. `src/main.ts` is the only browser-specific file and just prints a `ScreenModel` as text and wires taps/number keys to `tapOption`/`tapBack`. When logic or a type changes, update both the TS and C# sides.
 
-- Build: `cd web-prototype && tsc` (or `npm run build`)
-- Run: `node web-prototype/dist/main.js`, or open `web-prototype/index.html` after building
+- Install: `cd web-prototype && npm install`
+- Build: `npm run build` (type-checks with `tsc --noEmit`, then bundles `src/main.ts` into `dist/app.js` with esbuild)
+- Run: open `web-prototype/index.html` after building. The same `index.html` (no `<html>/<head>/<body>` tags, as the Artifact publisher requires) is published as a private claude.ai artifact with `dist/app.js` alongside it for viewing on a phone.
 - This is throwaway scaffolding, not the shipped implementation — the C# project under `src/MySelfRep/` is the real target.
