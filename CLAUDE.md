@@ -1,39 +1,44 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+このファイルは、このリポジトリで作業する Claude Code (claude.ai/code) 向けの手引きです。
 
-## Development Commands
+## 言語
 
-- Restore: `dotnet restore`
-- Build: `dotnet build`
-- Run: `dotnet run --project src/MySelfRep/MySelfRep.csproj`
+- 会話の返答、リポジトリ内の文章（このファイル、SPEC.md、コード内コメント）、コミットメッセージはすべて日本語で書く
+- ゲーム自体は最終的に日本語・英語の両対応を予定しているが、現時点の表示文言は日本語のみ
 
-No test suite yet.
+## 開発コマンド
 
-## Architecture
+- 復元: `dotnet restore`
+- ビルド: `dotnet build`
+- 実行: `dotnet run --project src/MySelfRep/MySelfRep.csproj`
 
-C# / MonoGame (DesktopGL) simulation game. Single project at `src/MySelfRep/`, opened via `MySelfRep.sln` (Rider/Visual Studio interoperable).
+テストはまだない。
 
-- `Program.cs`, `Game1.cs`: MonoGame entry point and bootstrap (window, content root, update/draw loop).
-- `Content/Content.mgcb`: MonoGame content pipeline project (currently empty, no assets yet).
-- `Core/`: cross-cutting game state.
-  - `TurnManager`: turn progression and the per-turn 政治力 (political power) resource that limits how many commands can be used.
-  - `PlayerState`: 信望 (world-to-player trust), kept separate from `Character.Hyouka` (player-to-character evaluation) since the design treats them as distinct.
-  - `World` / `SampleWorld`: the aggregate game state and placeholder sample data.
-  - `GameScreen` / `CommandRows` / `Labels`: the text-only screen layer. The whole command tree is shown at once as one vertically scrolling list with ┣/┗/┃ tree prefixes (same style as SPEC.md), not as drill-down menus. `GameScreen.Render()` returns a `ScreenModel` made entirely of strings (status line, title, rows with prefix/name/inline result lines, selected index, description); input goes through `TapRow(i)` only. Tapping a row once selects it and shows its description; tapping the same command again toggles its result lines inline under it (the spec requires the selected command's description to always be visible). Each prefix character is one grid cell, so renderers should draw prefixes cell by cell to keep the tree lines aligned. The platform renderer only draws these strings, so this layer is the shared contract between the TS prototype and MonoGame. `Game1` does not draw it yet (needs a SpriteFont with Japanese glyphs).
-- `Domain/Command/`: the 8 top-level command categories (`CommandCategory`: 人事/軍事/商人/内政/調略/外交/情報/設定) and the full command tree with per-command descriptions (`CommandNode`, `CommandTree`).
-- `Domain/Map/`: `Base` (any placed map entity — capital, city, dungeon, mine, etc.) and `Position`, the single xy-coordinate source that every map tier (world map, region map) is meant to render from.
-- `Domain/Character/`: `Character` and its `Abilities` (統率/軍事/政治/知略), `Personality`, `Gender`.
-- `Domain/Role/`: `RoleType` (役職) and `StarRank`, the shared ⭐️-accumulation rank used by both ranked roles (近衛/騎士団/魔術師/聖職者/傭兵団) and guilds.
-- `Domain/Guild/`: `GuildType` and `GuildMembership`, modeling the two-stage guild promotion (member → guild-name title → unique title, e.g. 盗賊ギルド: 会員→盗賊→陽炎).
+## 構成
 
-This is a skeleton only: types mirror what `SPEC.md`'s 決定事項 section has settled so far (structure and enums, not gameplay numbers/formulas — those are still 未決定事項). Full design spec, and what remains undecided, lives in `SPEC.md`; keep that file limited to 決定事項/未決定事項 only, no history or rationale prose.
+C# / MonoGame (DesktopGL) のシミュレーションゲーム。プロジェクトは `src/MySelfRep/` の1つのみで、`MySelfRep.sln` から開く（Rider / Visual Studio 両対応）。
 
-## TypeScript Prototype (temporary)
+- `Program.cs`, `Game1.cs`: MonoGame の起動処理（ウィンドウ、Content のルート、Update/Draw ループ）
+- `Content/Content.mgcb`: MonoGame のコンテンツパイプライン（まだ素材なし）
+- `Core/`: ゲーム全体にかかわる状態
+  - `TurnManager`: ターン進行と、1ターンごとの政治力（使えるコマンド数を制限する資源）
+  - `PlayerState`: 信望（世界からプレイヤーへの信頼）。`Character.Hyouka`（プレイヤーから人材への評価）とは仕様上別概念なので分けている
+  - `World` / `SampleWorld`: ゲーム状態のまとまりと、仮のサンプルデータ
+  - `GameScreen` / `CommandRows` / `Labels`: 文字だけの画面層。コマンドツリー全体を、SPEC.md と同じ ┣/┗/┃ の罫線付きで1本の縦スクロール一覧として表示する（階層を潜っていくメニューではない）。`GameScreen.Render()` はすべて文字列でできた `ScreenModel`（状態行、タイトル、罫線・名前・結果行を持つ各行、選択位置、説明文）を返し、入力は `TapRow(i)` のみ。1回目のタップで選択して説明を表示し、同じコマンドをもう一度タップすると結果行をその下に開閉する（仕様上、選択中コマンドの説明は常に表示する必要がある）。罫線は1文字=1マスなので、描画側は1文字ずつマスに入れて縦線を揃えること。描画側はこの文字列を表示するだけなので、この層が TS 試作と MonoGame の共通の取り決めになる。`Game1` はまだこれを描画していない（日本語グリフ入りの SpriteFont が必要）
+- `Domain/Command/`: コマンド大分類8種（`CommandCategory`: 人事/軍事/商人/内政/調略/外交/情報/設定）と、各コマンドの説明文付きコマンドツリー（`CommandNode`, `CommandTree`）
+- `Domain/Map/`: `Base`（首都・街・ダンジョン・鉱山など、マップ上に置くものすべて）と `Position`（世界マップ・地区マップなど全階層の表示の元になる xy 座標）
+- `Domain/Character/`: `Character` と `Abilities`（統率/軍事/政治/知略）、`Personality`、`Gender`
+- `Domain/Role/`: `RoleType`（役職）と `StarRank`（⭐️蓄積ランク。階級のある役職〈近衛/騎士団/魔術師/聖職者/傭兵団〉とギルドで共通）
+- `Domain/Guild/`: `GuildType` と `GuildMembership`（ギルドの二段階昇格。会員 → ギルド名の称号 → 固有称号。例: 盗賊ギルドは 会員→盗賊→陽炎）
 
-`web-prototype/` mirrors `src/MySelfRep/Domain` and `Core` 1:1 in TypeScript (`src/domain/`, `src/core/`, including `GameScreen`/`CommandRows`/`CommandTree`), so the game can be tried in a browser, including on Android, without a C# toolchain. Screens are text only by design: no graphics, since anything graphical would not port to MonoGame. `src/main.ts` is the only browser-specific file and just prints a `ScreenModel` as text and wires taps to `tapRow`. When logic or a type changes, update both the TS and C# sides.
+現時点は骨組みのみ。型は SPEC.md の「決定事項」で決まった範囲（構造と列挙値）だけを反映しており、数値や計算式は「未決定事項」のため入れていない。仕様全体と未決定の点は SPEC.md にある。SPEC.md は「決定事項」「未決定事項」だけを書き、経緯や理由の説明は書かない。
 
-- Install: `cd web-prototype && npm install`
-- Build: `npm run build` (type-checks with `tsc --noEmit`, then bundles `src/main.ts` into `dist/app.js` with esbuild)
-- Run: open `web-prototype/index.html` after building. The same `index.html` (no `<html>/<head>/<body>` tags, as the Artifact publisher requires) is published as a private claude.ai artifact with `dist/app.js` alongside it for viewing on a phone.
-- This is throwaway scaffolding, not the shipped implementation — the C# project under `src/MySelfRep/` is the real target.
+## TypeScript 試作（一時的）
+
+`web-prototype/` は `src/MySelfRep/Domain` と `Core` を TypeScript で1対1に写したもの（`src/domain/`, `src/core/`。`GameScreen`/`CommandRows`/`CommandTree` を含む）。C# の環境がなくてもブラウザ（Android 含む）で試せるようにするためのもの。画面は意図的に文字だけにしている（図形などの表現は MonoGame へ移植できないため）。ブラウザ専用のファイルは `src/main.ts` だけで、`ScreenModel` を文字として表示し、タップを `tapRow` に渡すだけ。ロジックや型を変えたときは TS 側と C# 側の両方を更新すること。
+
+- インストール: `cd web-prototype && npm install`
+- ビルド: `npm run build`（`tsc --noEmit` で型検査したあと、esbuild で `src/main.ts` を `dist/app.js` にまとめる）
+- 実行: ビルド後に `web-prototype/index.html` を開く。同じ `index.html`（Artifact の公開方式に合わせて `<html>/<head>/<body>` タグなし）を、`dist/app.js` と一緒に claude.ai の非公開ページとして公開しており、スマホから確認できる
+- これは使い捨ての足場で、本番の実装ではない。本命は `src/MySelfRep/` の C# プロジェクト

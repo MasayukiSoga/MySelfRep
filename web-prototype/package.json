@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "Temporary TypeScript prototype of the domain model in ../src/MySelfRep. Logic/data only, for quick browser verification before the final C# port.",
+  "description": "../src/MySelfRep のドメインモデルを写した一時的な TypeScript 試作。C# へ移植する前にブラウザで動作確認するためのもの",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit && esbuild src/main.ts --bundle --format=iife --target=es2020 --outfile=dist/app.js"
