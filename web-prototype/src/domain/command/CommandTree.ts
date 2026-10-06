@@ -53,6 +53,7 @@ export const COMMAND_TREE: CommandNode[] = [
       { name: "内応調略", description: "他勢力の人物を、本人が自発的に寝返ったように見せて引き込む" },
       { name: "攪乱工作", description: "指定場所の治安悪化や都市機能の麻痺を起こす。やりすぎると全勢力から敵視される" },
       { name: "離間計", description: "偽情報で他勢力同士の関係を悪化させる、または対象勢力の信望を貶める" },
+      { name: "笑裏藏刀", description: "友好を装いながら、裏で相手の評判を貶める情報を流す" },
       { name: "暗殺", description: "実行者の信望と能力で結果が変わる。失敗すると周囲に知られやすい" },
       {
         name: "三十六計",
@@ -87,7 +88,6 @@ export const COMMAND_TREE: CommandNode[] = [
       { name: "自由通商同盟", description: "交易を自由化する。相手が鍛冶依頼で作った武具を仕入れやすくなる" },
       { name: "同盟結束", description: "親善・不可侵・自由通商をまとめた同盟。毎ターン維持費がかかる" },
       { name: "降伏勧告", description: "相手に降伏を迫る。いきなり強国へ送ると使者が処刑される" },
-      { name: "笑裏藏刀", description: "友好を装いながら、裏で相手の評判を貶める情報を流す" },
     ],
   },
   {
