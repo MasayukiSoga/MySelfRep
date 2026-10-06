@@ -3,66 +3,48 @@ using MySelfRep.Domain.Command;
 namespace MySelfRep.Core;
 
 // 画面に出すものはすべて文字列。描画側はこれをそのまま表示し、
-// 入力は TapOption / TapBack に渡すだけにする
-public sealed record ScreenModel(
-    string Status,
-    string Title,
-    IReadOnlyList<string> Body,
-    IReadOnlyList<string> Options,
-    int SelectedIndex,
-    string Description,
-    bool CanGoBack);
+// 入力は TapRow に渡すだけにする
+public sealed record MenuRow(string Prefix, string Name, bool IsGroup, string DetailPrefix, IReadOnlyList<string> Detail);
+
+public sealed record ScreenModel(string Status, string Title, IReadOnlyList<MenuRow> Rows, int SelectedIndex, string Description);
 
 public class GameScreen
 {
-    private const string Hint = "項目を選ぶと説明を表示します。同じ項目をもう一度選ぶと決定します。";
+    private const string Hint = "項目を選ぶと説明を表示します。コマンドをもう一度選ぶと、その下に結果を表示します。";
 
     private readonly World _world;
-    private readonly TextMenu _menu = new(CommandTree.Root);
-    private (string Title, IReadOnlyList<string> Body)? _result;
+    private readonly List<CommandRow> _rows = CommandRows.Flatten(CommandTree.Root);
+    private int _selectedIndex = -1;
+    private int _openIndex = -1;
 
     public GameScreen(World world)
     {
         _world = world;
     }
 
-    public ScreenModel Render()
+    public ScreenModel Render() => new(
+        $"ターン {_world.Turn.CurrentTurn}　政治力 {_world.Turn.PoliticalPower}　信望 {_world.Player.Shinbou}",
+        "コマンド",
+        _rows.Select((r, i) => new MenuRow(
+            r.Prefix,
+            r.Node.Name,
+            r.Node.Children is not null,
+            r.DetailPrefix,
+            i == _openIndex ? Execute(r.Node) : Array.Empty<string>())).ToList(),
+        _selectedIndex,
+        _selectedIndex >= 0 && _selectedIndex < _rows.Count ? _rows[_selectedIndex].Node.Description : Hint);
+
+    // 1回目で選択して説明を表示、同じコマンドをもう一度選ぶと結果の表示を切り替える
+    public void TapRow(int index)
     {
-        var status = $"ターン {_world.Turn.CurrentTurn}　政治力 {_world.Turn.PoliticalPower}　信望 {_world.Player.Shinbou}";
-
-        if (_result is { } result)
+        if (index < 0 || index >= _rows.Count) return;
+        if (_selectedIndex != index)
         {
-            return new ScreenModel(status, result.Title, result.Body, Array.Empty<string>(), -1, "", true);
-        }
-
-        return new ScreenModel(
-            status,
-            _menu.Breadcrumb,
-            Array.Empty<string>(),
-            _menu.Options.Select(o => o.Children is not null ? $"{o.Name} ▸" : o.Name).ToList(),
-            _menu.SelectedIndex,
-            _menu.Selected?.Description ?? Hint,
-            _menu.CanGoBack);
-    }
-
-    public void TapOption(int index)
-    {
-        if (_result is not null) return;
-        var decided = _menu.Choose(index);
-        if (decided is not null)
-        {
-            _result = ($"{_menu.Breadcrumb} > {decided.Name}", Execute(decided));
-        }
-    }
-
-    public void TapBack()
-    {
-        if (_result is not null)
-        {
-            _result = null;
+            _selectedIndex = index;
             return;
         }
-        _menu.Back();
+        if (_rows[index].Node.Children is not null) return;
+        _openIndex = _openIndex == index ? -1 : index;
     }
 
     private IReadOnlyList<string> Execute(CommandNode command) => command.Name switch
@@ -75,11 +57,11 @@ public class GameScreen
         "人材調査状況" => _world.Characters.SelectMany(c => new[]
         {
             $"{c.Name}　{Labels.Of(c.Gender)}　性格:{Labels.Of(c.Personality)}",
-            $"　統率{c.Abilities.Leadership}　軍事{c.Abilities.Military}　政治{c.Abilities.Politics}　知略{c.Abilities.Strategy}",
+            $"統率{c.Abilities.Leadership}　軍事{c.Abilities.Military}　政治{c.Abilities.Politics}　知略{c.Abilities.Strategy}",
         }).ToList(),
         "信望" => new[] { $"世界からの信望: {_world.Player.Shinbou}" },
         "評価" => _world.Characters.Select(c => $"{c.Name}　評価 {c.Hyouka}").ToList(),
         "歴史" => new[] { "記録はまだありません。" },
-        _ => new[] { command.Description, "", "このコマンドは未実装です。" },
+        _ => new[] { "このコマンドは未実装です。" },
     };
 }
