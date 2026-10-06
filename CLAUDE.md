@@ -26,3 +26,11 @@ C# / MonoGame (DesktopGL) simulation game. Single project at `src/MySelfRep/`, o
 - `Domain/Guild/`: `GuildType` and `GuildMembership`, modeling the two-stage guild promotion (member → guild-name title → unique title, e.g. 盗賊ギルド: 会員→盗賊→陽炎).
 
 This is a skeleton only: types mirror what `SPEC.md`'s 決定事項 section has settled so far (structure and enums, not gameplay numbers/formulas — those are still 未決定事項). Full design spec, and what remains undecided, lives in `SPEC.md`; keep that file limited to 決定事項/未決定事項 only, no history or rationale prose.
+
+## TypeScript Prototype (temporary)
+
+`web-prototype/` mirrors the same domain types (`Base`/`Position`, `Character`/`Abilities`, `RoleType`/`StarRank`, `GuildType`/`GuildMembership`, `CommandCategory`) 1:1 in TypeScript, so the data model can be checked in a browser/Node without a C# toolchain. It intentionally has no real screen/UI work — `src/main.ts` just dumps sample data as plain text — since the rendering layer doesn't port to MonoGame anyway and isn't worth building twice. Only the parts that map directly onto `src/MySelfRep/Domain` and `Core` are built out here; when a type changes, update both sides.
+
+- Build: `cd web-prototype && tsc` (or `npm run build`)
+- Run: `node web-prototype/dist/main.js`, or open `web-prototype/index.html` after building
+- This is throwaway scaffolding, not the shipped implementation — the C# project under `src/MySelfRep/` is the real target.

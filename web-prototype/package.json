@@ -1,0 +1,14 @@
+{
+  "name": "myselfrep-ts-prototype",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Temporary TypeScript prototype of the domain model in ../src/MySelfRep. Logic/data only, for quick browser verification before the final C# port.",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}
