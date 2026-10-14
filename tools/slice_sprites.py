@@ -1,6 +1,6 @@
-"""8方向キャラシート（4x2コマ）を 64x128 の透過スプライトに切り出すテスト用スクリプト。
+"""8方向キャラシート（4x2コマ）を固定サイズの透過スプライトに切り出すテスト用スクリプト。
 
-使い方: python3 tools/slice_sprites.py <入力画像> <出力ディレクトリ>
+使い方: python3 tools/slice_sprites.py <入力画像> <出力ディレクトリ> [幅 高さ]（省略時 64 128）
 """
 import sys
 from collections import deque
@@ -57,7 +57,7 @@ def remove_background(cell: np.ndarray) -> np.ndarray:
 
 
 def fit(sprite: Image.Image, scale: float) -> Image.Image:
-    """共通の縮小率で縮め、横中央・足元下揃えで 64x128 に配置する。"""
+    """共通の縮小率で縮め、横中央・足元下揃えで OUT_W x OUT_H に配置する。"""
     sprite = sprite.crop(sprite.getbbox())
     size = (max(1, round(sprite.width * scale)), max(1, round(sprite.height * scale)))
     small = sprite.resize(size, Image.LANCZOS)
@@ -92,7 +92,7 @@ def main(src: str, out_dir: str) -> None:
     sheet = Image.new("RGBA", (OUT_W * len(SHEET_ORDER), OUT_H), (0, 0, 0, 0))
     for i, name in enumerate(SHEET_ORDER):
         sheet.alpha_composite(frames[name], (i * OUT_W, 0))
-    sheet.save(out / "sheet_64x128.png")
+    sheet.save(out / f"sheet_{OUT_W}x{OUT_H}.png")
 
     # 確認用: チェッカー背景 + 4倍拡大（ニアレストネイバー）
     checker = Image.new("RGBA", sheet.size, (255, 255, 255, 255))
@@ -106,4 +106,6 @@ def main(src: str, out_dir: str) -> None:
 
 
 if __name__ == "__main__":
+    if len(sys.argv) == 5:
+        OUT_W, OUT_H = int(sys.argv[3]), int(sys.argv[4])
     main(sys.argv[1], sys.argv[2])
