@@ -1,0 +1,10 @@
+{
+  "name": "tri-mode-arcade",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ひとつの簡易物理エンジンで STG・ACT・斜め見下ろしRPG を動かすブラウザゲーム",
+  "scripts": {
+    "test": "node --test",
+    "build": "node tools/build.js dist/index.html"
+  }
+}
