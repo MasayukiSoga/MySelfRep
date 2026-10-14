@@ -1,0 +1,321 @@
+<title>白花の少女 歩行テスト</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DotGothic16&family=M+PLUS+1p:wght@400;700&display=swap">
+<style>
+/* レイアウト: 上にフィールド、下に操作パネルと8方向コマ一覧。フィールド内は固定のゲーム配色 */
+:root {
+  --bg: #eef0f7;
+  --panel: #ffffff;
+  --fg: #1d2240;
+  --muted: #5b6285;
+  --line: #d3d7e8;
+  --accent: #2346c8;
+  --accent-soft: #dfe5fb;
+  --gold: #c99a1c;
+  --font-display: "DotGothic16", "M PLUS 1p", system-ui, sans-serif;
+  --font-body: "M PLUS 1p", "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #11142a; --panel: #1a1e3a; --fg: #e6e8f6; --muted: #9aa0c4; --line: #2e3460;
+  --accent: #7f9bff; --accent-soft: #252d5c; --gold: #e2b947; color-scheme: dark;
+} }
+:root[data-theme="dark"] {
+  --bg: #11142a; --panel: #1a1e3a; --fg: #e6e8f6; --muted: #9aa0c4; --line: #2e3460;
+  --accent: #7f9bff; --accent-soft: #252d5c; --gold: #e2b947; color-scheme: dark;
+}
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 32px;
+}
+.wrap { max-width: 980px; margin: 0 auto; display: grid; gap: 16px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; }
+h1 { font-family: var(--font-display); font-weight: 400; font-size: 1.6rem; margin: 0; text-wrap: balance; letter-spacing: .02em; }
+header p { margin: 0; color: var(--muted); font-size: .9rem; }
+.stage { position: relative; border-radius: 6px; overflow: hidden; border: 2px solid var(--fg); background: #2b3b2a; }
+canvas#field { display: block; width: 100%; height: auto; image-rendering: pixelated; image-rendering: crisp-edges; touch-action: none; cursor: crosshair; }
+.hud {
+  position: absolute; left: 8px; top: 8px; font-family: var(--font-display); font-size: .85rem;
+  color: #fff; background: rgba(10, 14, 40, .7); padding: 4px 10px; border-radius: 3px; pointer-events: none;
+}
+.controls { display: grid; grid-template-columns: auto 1fr; gap: 16px; align-items: start; }
+@media (max-width: 640px) { .controls { grid-template-columns: 1fr; } }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 14px; display: grid; gap: 12px; min-width: 0; }
+.label { font-size: .72rem; letter-spacing: .08em; color: var(--muted); font-weight: 700; }
+.pad { display: grid; grid-template-columns: repeat(3, 52px); grid-template-rows: repeat(3, 52px); gap: 4px; justify-content: center; }
+.pad button, .seg button {
+  font-family: var(--font-display); font-size: 1.1rem; border: 1px solid var(--line); background: var(--accent-soft);
+  color: var(--fg); border-radius: 4px; cursor: pointer; user-select: none; -webkit-user-select: none; touch-action: none;
+}
+.pad button.on, .pad button:active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.pad .center { background: transparent; border-style: dashed; font-size: .7rem; color: var(--muted); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.row { display: flex; flex-wrap: wrap; gap: 10px 20px; align-items: center; }
+.seg { display: inline-flex; gap: 0; }
+.seg button { font-family: var(--font-body); font-size: .85rem; padding: 6px 12px; border-radius: 0; }
+.seg button:first-child { border-radius: 4px 0 0 4px; }
+.seg button:last-child { border-radius: 0 4px 4px 0; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
+.field-ctl { display: flex; align-items: center; gap: 8px; font-size: .85rem; }
+input[type=range] { accent-color: var(--accent); width: 120px; }
+input[type=checkbox] { accent-color: var(--accent); }
+.frames { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; }
+@media (max-width: 480px) { .frames { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.frame { display: grid; gap: 4px; justify-items: center; padding: 6px 2px; border: 1px solid var(--line); border-radius: 4px; cursor: pointer; background: transparent; color: var(--fg); font: inherit; }
+.frame canvas { width: 100%; max-width: 64px; height: auto; image-rendering: pixelated;
+  background: repeating-conic-gradient(var(--line) 0 25%, transparent 0 50%) 0 0 / 8px 8px; }
+.frame span { font-size: .72rem; color: var(--muted); }
+.frame.on { border-color: var(--accent); background: var(--accent-soft); }
+.frame.on span { color: var(--accent); font-weight: 700; }
+.help { margin: 0; font-size: .82rem; color: var(--muted); line-height: 1.7; }
+kbd { font-family: var(--font-display); background: var(--accent-soft); border: 1px solid var(--line); border-radius: 3px; padding: 0 5px; color: var(--fg); }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>白花の少女 歩行テスト</h1>
+    <p>切り出した8方向スプライトをフィールド上で動かす確認用サンプル</p>
+  </header>
+
+  <div class="stage">
+    <canvas id="field" width="480" height="300" aria-label="キャラクターが歩くフィールド"></canvas>
+    <div class="hud" id="hud">下 ・ 96×128</div>
+  </div>
+
+  <div class="controls">
+    <div class="card">
+      <div class="label">移動パッド</div>
+      <div class="pad" id="pad">
+        <button data-d="-1,-1" aria-label="左上">↖</button>
+        <button data-d="0,-1" aria-label="上">↑</button>
+        <button data-d="1,-1" aria-label="右上">↗</button>
+        <button data-d="-1,0" aria-label="左">←</button>
+        <button class="center" tabindex="-1" aria-hidden="true">押して移動</button>
+        <button data-d="1,0" aria-label="右">→</button>
+        <button data-d="-1,1" aria-label="左下">↙</button>
+        <button data-d="0,1" aria-label="下">↓</button>
+        <button data-d="1,1" aria-label="右下">↘</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <div class="field-ctl"><span class="label">スプライト</span>
+          <div class="seg" role="group" aria-label="スプライトサイズ">
+            <button id="size64" aria-pressed="false">64×128</button>
+            <button id="size96" aria-pressed="true">96×128</button>
+          </div>
+        </div>
+        <label class="field-ctl" for="speed"><span class="label">速度</span><input id="speed" type="range" min="40" max="200" value="100"></label>
+        <label class="field-ctl" for="bob"><input id="bob" type="checkbox" checked>歩行の揺れ</label>
+        <label class="field-ctl" for="box"><input id="box" type="checkbox">枠を表示</label>
+      </div>
+      <div class="label">8方向のコマ（クリックで向きを変える）</div>
+      <div class="frames" id="frames"></div>
+      <p class="help"><kbd>↑↓←→</kbd> または <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> で移動し、2つ同時押しで斜めに進みます。フィールドをクリック・タップすると、その地点まで歩きます。歩きのコマはまだないため、移動中は上下の揺れで代用しています。</p>
+    </div>
+  </div>
+</div>
+
+<script>
+const SHEETS = { 64: "__SHEET64__", 96: "__SHEET96__" };
+const FRAME_H = 128;
+// シートの並び（下から時計回り）
+const ORDER = ["down", "down_left", "left", "up_left", "up", "up_right", "right", "down_right"];
+const NAMES = { down: "下", down_left: "左下", left: "左", up_left: "左上", up: "上", up_right: "右上", right: "右", down_right: "右下" };
+const DIR_OF = { "0,1": "down", "-1,1": "down_left", "-1,0": "left", "-1,-1": "up_left", "0,-1": "up", "1,-1": "up_right", "1,0": "right", "1,1": "down_right" };
+
+const cv = document.getElementById("field");
+const ctx = cv.getContext("2d");
+ctx.imageSmoothingEnabled = false;
+const W = cv.width, H = cv.height;
+
+const images = {};
+let size = 96;
+const state = { x: W / 2, y: H * 0.72, dir: "down", moving: false, t: 0, target: null };
+const keys = new Set();
+const padDirs = new Set();
+
+function loadImages() {
+  return Promise.all(Object.entries(SHEETS).map(([k, src]) => new Promise(res => {
+    const img = new Image(); img.onload = () => { images[k] = img; res(); }; img.src = src;
+  })));
+}
+
+// ---- フィールド（草地のタイルと小物）を一度だけ描いておく ----
+const ground = document.createElement("canvas");
+ground.width = W; ground.height = H;
+function rng(seed) { return () => (seed = (seed * 16807) % 2147483647) / 2147483647; }
+function buildGround() {
+  const g = ground.getContext("2d");
+  const r = rng(7);
+  const T = 16;
+  for (let y = 0; y < H; y += T) for (let x = 0; x < W; x += T) {
+    g.fillStyle = (x / T + y / T) % 2 ? "#5d9a4a" : "#62a04e";
+    g.fillRect(x, y, T, T);
+    for (let i = 0; i < 3; i++) { g.fillStyle = r() > .5 ? "#4f8a3f" : "#73b25c"; g.fillRect(x + (r() * T | 0), y + (r() * T | 0), 1, 2); }
+  }
+  // 石畳の道
+  for (let x = 0; x < W; x += 16) for (let y = 176; y < 224; y += 16) {
+    g.fillStyle = "#b9b2a0"; g.fillRect(x, y, 16, 16);
+    g.fillStyle = "#a39b87"; g.fillRect(x, y + 15, 16, 1); g.fillRect(x + 15, y, 1, 16);
+    g.fillStyle = "#cdc7b6"; g.fillRect(x + 1, y + 1, 14, 1);
+  }
+  // 花
+  for (let i = 0; i < 40; i++) {
+    const x = r() * W | 0, y = r() * H | 0;
+    if (y > 168 && y < 228) continue;
+    g.fillStyle = r() > .5 ? "#ffffff" : "#ffd84a"; g.fillRect(x, y, 2, 2);
+    g.fillStyle = "#f2a42a"; g.fillRect(x, y + 2, 1, 1);
+  }
+}
+// y座標で前後関係を並べ替える小物（木・岩）
+const props = [
+  { kind: "tree", x: 70, y: 120 }, { kind: "tree", x: 400, y: 100 }, { kind: "tree", x: 300, y: 285 },
+  { kind: "rock", x: 180, y: 140 }, { kind: "rock", x: 430, y: 260 }, { kind: "rock", x: 40, y: 270 },
+];
+function drawProp(p) {
+  if (p.kind === "tree") {
+    ctx.fillStyle = "rgba(0,0,0,.25)"; ctx.beginPath(); ctx.ellipse(p.x, p.y, 22, 6, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#6b4528"; ctx.fillRect(p.x - 5, p.y - 30, 10, 30);
+    ctx.fillStyle = "#2f6b33"; ctx.beginPath(); ctx.arc(p.x, p.y - 52, 30, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#3f8a41"; ctx.beginPath(); ctx.arc(p.x - 8, p.y - 60, 18, 0, Math.PI * 2); ctx.fill();
+  } else {
+    ctx.fillStyle = "rgba(0,0,0,.25)"; ctx.beginPath(); ctx.ellipse(p.x, p.y, 16, 4, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#8d8f9c"; ctx.beginPath(); ctx.ellipse(p.x, p.y - 8, 15, 10, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#b3b5c2"; ctx.fillRect(p.x - 8, p.y - 15, 8, 3);
+  }
+}
+
+function drawHero() {
+  const img = images[size];
+  if (!img) return;
+  const idx = ORDER.indexOf(state.dir);
+  const bobOn = document.getElementById("bob").checked;
+  const bob = state.moving && bobOn ? Math.abs(Math.sin(state.t * 10)) * 3 : 0;
+  // 足元の影
+  ctx.fillStyle = "rgba(10,20,40,.3)";
+  ctx.beginPath(); ctx.ellipse(Math.round(state.x), Math.round(state.y), size === 96 ? 22 : 16, 5, 0, 0, Math.PI * 2); ctx.fill();
+  const dx = Math.round(state.x - size / 2), dy = Math.round(state.y - FRAME_H - bob);
+  ctx.drawImage(img, idx * size, 0, size, FRAME_H, dx, dy, size, FRAME_H);
+  if (document.getElementById("box").checked) {
+    ctx.strokeStyle = "#ff3b6b"; ctx.lineWidth = 1; ctx.strokeRect(dx + .5, dy + .5, size - 1, FRAME_H - 1);
+  }
+}
+
+function render() {
+  ctx.drawImage(ground, 0, 0);
+  if (state.target) {
+    ctx.strokeStyle = "rgba(255,255,255,.8)"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.ellipse(state.target.x, state.target.y, 8, 3, 0, 0, Math.PI * 2); ctx.stroke();
+  }
+  const items = props.map(p => ({ y: p.y, draw: () => drawProp(p) }));
+  items.push({ y: state.y, draw: drawHero });
+  items.sort((a, b) => a.y - b.y).forEach(i => i.draw());
+}
+
+function inputVector() {
+  let x = 0, y = 0;
+  if (keys.has("ArrowLeft") || keys.has("a")) x -= 1;
+  if (keys.has("ArrowRight") || keys.has("d")) x += 1;
+  if (keys.has("ArrowUp") || keys.has("w")) y -= 1;
+  if (keys.has("ArrowDown") || keys.has("s")) y += 1;
+  for (const d of padDirs) { const [px, py] = d.split(",").map(Number); x += px; y += py; }
+  return [Math.sign(x), Math.sign(y)];
+}
+
+// 任意の角度を8方向のどれかに丸める
+function quantize(vx, vy) {
+  const a = Math.atan2(vy, vx);
+  const k = Math.round(a / (Math.PI / 4));
+  const ux = Math.round(Math.cos(k * Math.PI / 4)), uy = Math.round(Math.sin(k * Math.PI / 4));
+  return [ux, uy];
+}
+
+let last = performance.now();
+function tick(now) {
+  const dt = Math.min(.05, (now - last) / 1000); last = now;
+  const speed = +document.getElementById("speed").value;
+  let [vx, vy] = inputVector();
+  if (vx || vy) state.target = null;
+  else if (state.target) {
+    const tx = state.target.x - state.x, ty = state.target.y - state.y;
+    if (Math.hypot(tx, ty) < 2) state.target = null;
+    else [vx, vy] = quantize(tx, ty);
+  }
+  state.moving = !!(vx || vy);
+  if (state.moving) {
+    const len = Math.hypot(vx, vy);
+    let step = speed * dt;
+    if (state.target) step = Math.min(step, Math.hypot(state.target.x - state.x, state.target.y - state.y));
+    state.x = Math.max(size / 2, Math.min(W - size / 2, state.x + vx / len * step));
+    state.y = Math.max(FRAME_H - 20, Math.min(H - 4, state.y + vy / len * step));
+    setDir(DIR_OF[vx + "," + vy]);
+    state.t += dt;
+  } else state.t = 0;
+  render();
+  requestAnimationFrame(tick);
+}
+
+function setDir(d) {
+  if (state.dir === d) return;
+  state.dir = d;
+  updateUi();
+}
+function updateUi() {
+  document.getElementById("hud").textContent = `${NAMES[state.dir]} ・ ${size}×128`;
+  document.querySelectorAll(".frame").forEach(f => f.classList.toggle("on", f.dataset.dir === state.dir));
+  document.getElementById("size64").setAttribute("aria-pressed", size === 64);
+  document.getElementById("size96").setAttribute("aria-pressed", size === 96);
+}
+
+function buildFrames() {
+  const box = document.getElementById("frames");
+  box.innerHTML = "";
+  ORDER.forEach((d, i) => {
+    const b = document.createElement("button");
+    b.className = "frame"; b.dataset.dir = d;
+    const c = document.createElement("canvas"); c.width = size; c.height = FRAME_H;
+    const g = c.getContext("2d"); g.imageSmoothingEnabled = false;
+    g.drawImage(images[size], i * size, 0, size, FRAME_H, 0, 0, size, FRAME_H);
+    const s = document.createElement("span"); s.textContent = NAMES[d];
+    b.append(c, s);
+    b.addEventListener("click", () => setDir(d));
+    box.append(b);
+  });
+  updateUi();
+}
+
+function setSize(s) { size = s; state.x = Math.max(size / 2, Math.min(W - size / 2, state.x)); buildFrames(); }
+
+addEventListener("keydown", e => {
+  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "w", "a", "s", "d"].includes(k)) {
+    if (e.target.closest && e.target.closest("input")) return;
+    keys.add(k); e.preventDefault();
+  }
+});
+addEventListener("keyup", e => keys.delete(e.key.length === 1 ? e.key.toLowerCase() : e.key));
+addEventListener("blur", () => { keys.clear(); padDirs.clear(); });
+
+document.querySelectorAll("#pad button[data-d]").forEach(b => {
+  const on = e => { e.preventDefault(); padDirs.add(b.dataset.d); b.classList.add("on"); b.setPointerCapture?.(e.pointerId); };
+  const off = () => { padDirs.delete(b.dataset.d); b.classList.remove("on"); };
+  b.addEventListener("pointerdown", on);
+  b.addEventListener("pointerup", off);
+  b.addEventListener("pointercancel", off);
+  b.addEventListener("lostpointercapture", off);
+});
+
+cv.addEventListener("pointerdown", e => {
+  const r = cv.getBoundingClientRect();
+  state.target = { x: (e.clientX - r.left) * W / r.width, y: (e.clientY - r.top) * H / r.height };
+});
+document.getElementById("size64").addEventListener("click", () => setSize(64));
+document.getElementById("size96").addEventListener("click", () => setSize(96));
+
+buildGround();
+loadImages().then(() => { buildFrames(); requestAnimationFrame(tick); });
+</script>
