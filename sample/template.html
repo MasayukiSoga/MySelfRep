@@ -69,6 +69,21 @@ input[type=checkbox] { accent-color: var(--accent); }
 .frame span { font-size: .72rem; color: var(--muted); }
 .frame.on { border-color: var(--accent); background: var(--accent-soft); }
 .frame.on span { color: var(--accent); font-weight: 700; }
+.walk { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.walk-frames { display: flex; gap: 6px; }
+.walk-frames figure { margin: 0; display: grid; gap: 4px; justify-items: center; padding: 6px; border: 1px solid var(--line); border-radius: 4px; }
+.walk-frames canvas { width: 48px; height: auto; image-rendering: pixelated;
+  background: repeating-conic-gradient(var(--line) 0 25%, transparent 0 50%) 0 0 / 8px 8px; }
+.walk-frames figcaption { font-size: .72rem; color: var(--muted); }
+.walk-frames figure.on { border-color: var(--accent); background: var(--accent-soft); }
+.walk-frames figure.on figcaption { color: var(--accent); font-weight: 700; }
+.beats { display: flex; gap: 4px; font-family: var(--font-display); }
+.beats span { min-width: 28px; text-align: center; padding: 2px 6px; border: 1px solid var(--line); border-radius: 3px; color: var(--muted); font-size: .8rem; }
+.beats span.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.upload { display: grid; gap: 6px; }
+.upload input { font-size: .8rem; color: var(--muted); max-width: 100%; }
+.msg { font-size: .8rem; color: var(--muted); margin: 0; }
+.msg.err { color: #c8233c; }
 .help { margin: 0; font-size: .82rem; color: var(--muted); line-height: 1.7; }
 kbd { font-family: var(--font-display); background: var(--accent-soft); border: 1px solid var(--line); border-radius: 3px; padding: 0 5px; color: var(--fg); }
 </style>
@@ -106,42 +121,59 @@ kbd { font-family: var(--font-display); background: var(--accent-soft); border: 
           <div class="seg" role="group" aria-label="スプライトサイズ">
             <button id="size64" aria-pressed="false">64×128</button>
             <button id="size96" aria-pressed="true">96×128</button>
+            <button id="sizeUp" aria-pressed="false" hidden>読み込み</button>
           </div>
         </div>
         <label class="field-ctl" for="speed"><span class="label">速度</span><input id="speed" type="range" min="40" max="200" value="100"></label>
-        <label class="field-ctl" for="bob"><input id="bob" type="checkbox" checked>歩行の揺れ</label>
+        <label class="field-ctl" for="beat"><span class="label">1拍</span><input id="beat" type="range" min="80" max="400" value="170"><span id="beatMs">170ms</span></label>
+        <label class="field-ctl" for="bob"><input id="bob" type="checkbox" checked>体の上下動</label>
         <label class="field-ctl" for="box"><input id="box" type="checkbox">枠を表示</label>
+      </div>
+      <div class="label">歩行アニメ（右足 → 直立 → 左足 → 直立 の4拍）</div>
+      <div class="walk">
+        <div class="walk-frames" id="walkFrames"></div>
+        <div class="beats" id="beats"><span>1</span><span>2</span><span>3</span><span>4</span></div>
       </div>
       <div class="label">8方向のコマ（クリックで向きを変える）</div>
       <div class="frames" id="frames"></div>
-      <p class="help"><kbd>↑↓←→</kbd> または <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> で移動し、2つ同時押しで斜めに進みます。フィールドをクリック・タップすると、その地点まで歩きます。歩きのコマはまだないため、移動中は上下の揺れで代用しています。</p>
+      <div class="upload">
+        <label class="label" for="file">自分の歩行シートを読み込む</label>
+        <input id="file" type="file" accept="image/png,image/webp,image/gif">
+        <p class="msg" id="msg">横3コマ（左足・直立・右足）× 縦8方向（下・左下・左・左上・上・右上・右・右下）の透過PNG。1コマの大きさは画像サイズから自動で決まります。</p>
+      </div>
+      <p class="help"><kbd>↑↓←→</kbd> または <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> で移動し、2つ同時押しで斜めに進みます。フィールドをクリック・タップすると、その地点まで歩きます。いまの歩行コマは、1枚絵の足元だけを動かして作った仮のものです。</p>
     </div>
   </div>
 </div>
 
 <script>
-const SHEETS = { 64: "__SHEET64__", 96: "__SHEET96__" };
-const FRAME_H = 128;
-// シートの並び（下から時計回り）
+// 行 = 方向（下から時計回り）、列 = [左足, 直立, 右足]
+const SHEETS = { 64: "__WALK64__", 96: "__WALK96__" };
 const ORDER = ["down", "down_left", "left", "up_left", "up", "up_right", "right", "down_right"];
 const NAMES = { down: "下", down_left: "左下", left: "左", up_left: "左上", up: "上", up_right: "右上", right: "右", down_right: "右下" };
 const DIR_OF = { "0,1": "down", "-1,1": "down_left", "-1,0": "left", "-1,-1": "up_left", "0,-1": "up", "1,-1": "up_right", "1,0": "right", "1,1": "down_right" };
+const COLS = 3;
+const BEATS = [2, 1, 0, 1];           // 右足 → 直立 → 左足 → 直立
+const COL_NAMES = ["左足", "直立", "右足"];
 
 const cv = document.getElementById("field");
 const ctx = cv.getContext("2d");
 ctx.imageSmoothingEnabled = false;
 const W = cv.width, H = cv.height;
 
-const images = {};
-let size = 96;
-const state = { x: W / 2, y: H * 0.72, dir: "down", moving: false, t: 0, target: null };
+const sheets = {};   // key -> { img, fw, fh }
+let current = "96";
+const state = { x: W / 2, y: H * 0.72, dir: "down", moving: false, beatT: 0, beat: 0, target: null };
 const keys = new Set();
 const padDirs = new Set();
+const $ = id => document.getElementById(id);
 
-function loadImages() {
-  return Promise.all(Object.entries(SHEETS).map(([k, src]) => new Promise(res => {
-    const img = new Image(); img.onload = () => { images[k] = img; res(); }; img.src = src;
-  })));
+function sheetFrom(img) {
+  if (img.width % COLS || img.height % ORDER.length) return null;
+  return { img, fw: img.width / COLS, fh: img.height / ORDER.length };
+}
+function loadImage(src) {
+  return new Promise((res, rej) => { const img = new Image(); img.onload = () => res(img); img.onerror = rej; img.src = src; });
 }
 
 // ---- フィールド（草地のタイルと小物）を一度だけ描いておく ----
@@ -157,13 +189,11 @@ function buildGround() {
     g.fillRect(x, y, T, T);
     for (let i = 0; i < 3; i++) { g.fillStyle = r() > .5 ? "#4f8a3f" : "#73b25c"; g.fillRect(x + (r() * T | 0), y + (r() * T | 0), 1, 2); }
   }
-  // 石畳の道
   for (let x = 0; x < W; x += 16) for (let y = 176; y < 224; y += 16) {
     g.fillStyle = "#b9b2a0"; g.fillRect(x, y, 16, 16);
     g.fillStyle = "#a39b87"; g.fillRect(x, y + 15, 16, 1); g.fillRect(x + 15, y, 1, 16);
     g.fillStyle = "#cdc7b6"; g.fillRect(x + 1, y + 1, 14, 1);
   }
-  // 花
   for (let i = 0; i < 40; i++) {
     const x = r() * W | 0, y = r() * H | 0;
     if (y > 168 && y < 228) continue;
@@ -171,7 +201,6 @@ function buildGround() {
     g.fillStyle = "#f2a42a"; g.fillRect(x, y + 2, 1, 1);
   }
 }
-// y座標で前後関係を並べ替える小物（木・岩）
 const props = [
   { kind: "tree", x: 70, y: 120 }, { kind: "tree", x: 400, y: 100 }, { kind: "tree", x: 300, y: 285 },
   { kind: "rock", x: 180, y: 140 }, { kind: "rock", x: 430, y: 260 }, { kind: "rock", x: 40, y: 270 },
@@ -189,19 +218,20 @@ function drawProp(p) {
   }
 }
 
+function currentCol() { return state.moving ? BEATS[state.beat] : 1; }
+
 function drawHero() {
-  const img = images[size];
-  if (!img) return;
-  const idx = ORDER.indexOf(state.dir);
-  const bobOn = document.getElementById("bob").checked;
-  const bob = state.moving && bobOn ? Math.abs(Math.sin(state.t * 10)) * 3 : 0;
-  // 足元の影
+  const sh = sheets[current];
+  if (!sh) return;
+  const row = ORDER.indexOf(state.dir), col = currentCol();
+  // 両足がそろう直立コマで体が少し高くなる
+  const lift = state.moving && $("bob").checked && col === 1 ? 1 : 0;
   ctx.fillStyle = "rgba(10,20,40,.3)";
-  ctx.beginPath(); ctx.ellipse(Math.round(state.x), Math.round(state.y), size === 96 ? 22 : 16, 5, 0, 0, Math.PI * 2); ctx.fill();
-  const dx = Math.round(state.x - size / 2), dy = Math.round(state.y - FRAME_H - bob);
-  ctx.drawImage(img, idx * size, 0, size, FRAME_H, dx, dy, size, FRAME_H);
-  if (document.getElementById("box").checked) {
-    ctx.strokeStyle = "#ff3b6b"; ctx.lineWidth = 1; ctx.strokeRect(dx + .5, dy + .5, size - 1, FRAME_H - 1);
+  ctx.beginPath(); ctx.ellipse(Math.round(state.x), Math.round(state.y), Math.max(12, sh.fw * .23), 5, 0, 0, Math.PI * 2); ctx.fill();
+  const dx = Math.round(state.x - sh.fw / 2), dy = Math.round(state.y - sh.fh - lift);
+  ctx.drawImage(sh.img, col * sh.fw, row * sh.fh, sh.fw, sh.fh, dx, dy, sh.fw, sh.fh);
+  if ($("box").checked) {
+    ctx.strokeStyle = "#ff3b6b"; ctx.lineWidth = 1; ctx.strokeRect(dx + .5, dy + .5, sh.fw - 1, sh.fh - 1);
   }
 }
 
@@ -228,16 +258,16 @@ function inputVector() {
 
 // 任意の角度を8方向のどれかに丸める
 function quantize(vx, vy) {
-  const a = Math.atan2(vy, vx);
-  const k = Math.round(a / (Math.PI / 4));
-  const ux = Math.round(Math.cos(k * Math.PI / 4)), uy = Math.round(Math.sin(k * Math.PI / 4));
-  return [ux, uy];
+  const k = Math.round(Math.atan2(vy, vx) / (Math.PI / 4));
+  return [Math.round(Math.cos(k * Math.PI / 4)), Math.round(Math.sin(k * Math.PI / 4))];
 }
 
 let last = performance.now();
+let shownBeat = -1, shownCol = -1;
 function tick(now) {
   const dt = Math.min(.05, (now - last) / 1000); last = now;
-  const speed = +document.getElementById("speed").value;
+  const sh = sheets[current];
+  const speed = +$("speed").value;
   let [vx, vy] = inputVector();
   if (vx || vy) state.target = null;
   else if (state.target) {
@@ -245,50 +275,82 @@ function tick(now) {
     if (Math.hypot(tx, ty) < 2) state.target = null;
     else [vx, vy] = quantize(tx, ty);
   }
+  const wasMoving = state.moving;
   state.moving = !!(vx || vy);
   if (state.moving) {
+    // 歩き出しはすぐ足を出すコマから
+    if (!wasMoving) { state.beat = 0; state.beatT = 0; }
     const len = Math.hypot(vx, vy);
     let step = speed * dt;
     if (state.target) step = Math.min(step, Math.hypot(state.target.x - state.x, state.target.y - state.y));
-    state.x = Math.max(size / 2, Math.min(W - size / 2, state.x + vx / len * step));
-    state.y = Math.max(FRAME_H - 20, Math.min(H - 4, state.y + vy / len * step));
+    state.x = Math.max(sh.fw / 2, Math.min(W - sh.fw / 2, state.x + vx / len * step));
+    state.y = Math.max(sh.fh - 20, Math.min(H - 4, state.y + vy / len * step));
     setDir(DIR_OF[vx + "," + vy]);
-    state.t += dt;
-  } else state.t = 0;
+    state.beatT += dt * 1000;
+    const beatMs = +$("beat").value;
+    while (state.beatT >= beatMs) { state.beatT -= beatMs; state.beat = (state.beat + 1) % BEATS.length; }
+  }
   render();
+  const col = currentCol(), beat = state.moving ? state.beat : -1;
+  if (col !== shownCol || beat !== shownBeat) { shownCol = col; shownBeat = beat; updateBeatUi(); }
   requestAnimationFrame(tick);
 }
 
 function setDir(d) {
   if (state.dir === d) return;
   state.dir = d;
+  buildWalkFrames();
   updateUi();
 }
 function updateUi() {
-  document.getElementById("hud").textContent = `${NAMES[state.dir]} ・ ${size}×128`;
+  const sh = sheets[current];
+  $("hud").textContent = `${NAMES[state.dir]} ・ ${sh.fw}×${sh.fh}`;
   document.querySelectorAll(".frame").forEach(f => f.classList.toggle("on", f.dataset.dir === state.dir));
-  document.getElementById("size64").setAttribute("aria-pressed", size === 64);
-  document.getElementById("size96").setAttribute("aria-pressed", size === 96);
+  for (const [id, key] of [["size64", "64"], ["size96", "96"], ["sizeUp", "up"]]) $(id).setAttribute("aria-pressed", current === key);
+}
+function updateBeatUi() {
+  document.querySelectorAll("#walkFrames figure").forEach((f, i) => f.classList.toggle("on", i === shownCol));
+  document.querySelectorAll("#beats span").forEach((b, i) => b.classList.toggle("on", i === shownBeat));
 }
 
+function frameCanvas(sh, row, col) {
+  const c = document.createElement("canvas"); c.width = sh.fw; c.height = sh.fh;
+  const g = c.getContext("2d"); g.imageSmoothingEnabled = false;
+  g.drawImage(sh.img, col * sh.fw, row * sh.fh, sh.fw, sh.fh, 0, 0, sh.fw, sh.fh);
+  return c;
+}
+function buildWalkFrames() {
+  const sh = sheets[current], row = ORDER.indexOf(state.dir);
+  const box = $("walkFrames"); box.innerHTML = "";
+  COL_NAMES.forEach((name, col) => {
+    const f = document.createElement("figure");
+    const cap = document.createElement("figcaption"); cap.textContent = name;
+    f.append(frameCanvas(sh, row, col), cap);
+    box.append(f);
+  });
+  shownCol = -1;
+}
 function buildFrames() {
-  const box = document.getElementById("frames");
-  box.innerHTML = "";
-  ORDER.forEach((d, i) => {
+  const sh = sheets[current];
+  const box = $("frames"); box.innerHTML = "";
+  ORDER.forEach((d, row) => {
     const b = document.createElement("button");
     b.className = "frame"; b.dataset.dir = d;
-    const c = document.createElement("canvas"); c.width = size; c.height = FRAME_H;
-    const g = c.getContext("2d"); g.imageSmoothingEnabled = false;
-    g.drawImage(images[size], i * size, 0, size, FRAME_H, 0, 0, size, FRAME_H);
     const s = document.createElement("span"); s.textContent = NAMES[d];
-    b.append(c, s);
+    b.append(frameCanvas(sh, row, 1), s);
     b.addEventListener("click", () => setDir(d));
     box.append(b);
   });
+  buildWalkFrames();
   updateUi();
 }
 
-function setSize(s) { size = s; state.x = Math.max(size / 2, Math.min(W - size / 2, state.x)); buildFrames(); }
+function setSheet(key) {
+  current = key;
+  const sh = sheets[key];
+  state.x = Math.max(sh.fw / 2, Math.min(W - sh.fw / 2, state.x));
+  buildFrames();
+}
 
 addEventListener("keydown", e => {
   const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
@@ -313,9 +375,35 @@ cv.addEventListener("pointerdown", e => {
   const r = cv.getBoundingClientRect();
   state.target = { x: (e.clientX - r.left) * W / r.width, y: (e.clientY - r.top) * H / r.height };
 });
-document.getElementById("size64").addEventListener("click", () => setSize(64));
-document.getElementById("size96").addEventListener("click", () => setSize(96));
+$("size64").addEventListener("click", () => setSheet("64"));
+$("size96").addEventListener("click", () => setSheet("96"));
+$("sizeUp").addEventListener("click", () => setSheet("up"));
+$("beat").addEventListener("input", () => { $("beatMs").textContent = $("beat").value + "ms"; });
+
+$("file").addEventListener("change", async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const msg = $("msg");
+  try {
+    const img = await loadImage(URL.createObjectURL(file));
+    const sh = sheetFrom(img);
+    if (!sh) {
+      msg.className = "msg err";
+      msg.textContent = `${img.width}×${img.height} は横3コマ×縦8方向で割り切れません。幅は3の倍数、高さは8の倍数にしてください。`;
+      return;
+    }
+    sheets.up = sh;
+    $("sizeUp").hidden = false;
+    msg.className = "msg";
+    msg.textContent = `${file.name} を読み込みました（1コマ ${sh.fw}×${sh.fh}）。`;
+    setSheet("up");
+  } catch {
+    msg.className = "msg err";
+    msg.textContent = "画像を読み込めませんでした。PNGなどの画像ファイルを選んでください。";
+  }
+});
 
 buildGround();
-loadImages().then(() => { buildFrames(); requestAnimationFrame(tick); });
+Promise.all(Object.entries(SHEETS).map(async ([k, src]) => { sheets[k] = sheetFrom(await loadImage(src)); }))
+  .then(() => { setSheet("96"); requestAnimationFrame(tick); });
 </script>
