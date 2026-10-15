@@ -13,7 +13,22 @@
     ctx.globalAlpha = o.alpha ?? 1;
   }
 
+  // 画像の見た目（imageFit プラグインの Skin）を使うときの枠。拡大前の幅・高さと、足元から浮かせる量
+  // 画像はこの枠に縦横比を保って収まるよう縮小される
+  const BOX = { hero: [14, 22, 0], slime: [20, 14, 0], bat: [28, 20, 4], goblin: [18, 22, 0], dragon: [56, 50, 0] };
+
+  // o.skin があれば画像で描いて true を返す
+  function skinned(ctx, key, x, y, o) {
+    if (!o.skin) return false;
+    const [w, h, lift] = BOX[key];
+    begin(ctx, x, y, o);
+    o.skin.draw(ctx, w, h, { lift, flash: o.flash });
+    ctx.restore();
+    return true;
+  }
+
   function hero(ctx, x, y, o = {}) {
+    if (skinned(ctx, 'hero', x, y, o)) return;
     const step = o.step ?? 0;
     begin(ctx, x, y, o);
     ctx.fillStyle = '#5a3d2b';
@@ -36,6 +51,7 @@
   }
 
   function monster(ctx, kind, x, y, o = {}) {
+    if (skinned(ctx, kind, x, y, o)) return;
     const t = o.t ?? 0;
     const col = (c) => (o.flash ? '#fff' : c);
     begin(ctx, x, y, o);
@@ -167,5 +183,5 @@
     ctx.fillRect(x - 2, y - 2, 2, 2);
   }
 
-  G.sprites = { hero, monster, fireball, missile, rock };
+  G.sprites = { BOX, hero, monster, fireball, missile, rock };
 })(globalThis.Game = globalThis.Game || {});

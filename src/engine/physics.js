@@ -9,6 +9,10 @@
  *   - いま重なっている相手は body.contacts で参照できる
  *   - blocks に含まれるレイヤーの相手からは押し出される（NPC にめり込まない等）
  * - 高さ z（見下ろし型のジャンプ用）。zGravity は z にだけかかる重力
+ * - プラグイン：world.use(plugin, options) で機能を足せる。plugin は次のうち必要なものだけを持つ
+ *     install(world, options)  … use() したとき1回
+ *     onAdd(body, world) / onRemove(body, world)  … 物体を追加・削除したとき
+ *     beforeStep(world, dt) / afterStep(world, dt)  … 毎ステップの前後
  *
  * 単位は px と秒。座標は物体の中心。
  */
@@ -128,11 +132,25 @@
       this.cellSize = o.cellSize ?? 64;
       this.bodies = [];
       this.pairs = new Map();
+      this.plugins = [];
+    }
+
+    // プラグインを組み込む。同じものを2回 use() しても1回だけ
+    use(plugin, options = {}) {
+      if (this.plugins.includes(plugin)) return this;
+      this.plugins.push(plugin);
+      plugin.install?.(this, options);
+      return this;
+    }
+
+    _notify(hook, ...args) {
+      for (const p of this.plugins) p[hook]?.(...args);
     }
 
     add(b) {
       b.removed = false;
       this.bodies.push(b);
+      this._notify('onAdd', b, this);
       return b;
     }
 
@@ -141,9 +159,11 @@
       b.removed = true;
       for (const o of b.contacts) o.contacts.delete(b);
       b.contacts.clear();
+      this._notify('onRemove', b, this);
     }
 
     step(dt) {
+      this._notify('beforeStep', this, dt);
       if (this.bodies.some((b) => b.removed)) this.bodies = this.bodies.filter((b) => !b.removed);
 
       for (const b of this.bodies) {
@@ -169,6 +189,7 @@
       }
 
       this._detect();
+      this._notify('afterStep', this, dt);
     }
 
     // 指定した範囲に重なっている物体を探す（会話相手の検索など）

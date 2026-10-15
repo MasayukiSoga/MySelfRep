@@ -6,6 +6,7 @@ const assert = require('node:assert/strict');
 
 require('../src/engine/physics.js');
 require('../src/engine/core.js');
+require('../src/plugins/image-fit.js');
 require('../src/game/data.js');
 require('../src/game/sprites.js');
 require('../src/modes/battle.js');

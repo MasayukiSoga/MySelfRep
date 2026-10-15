@@ -198,7 +198,7 @@
       if (this.inv > 0 && Math.floor(this.inv * 15) % 2) return;
       const facing = Math.sign(this.fx - this.fy) || 1;
       const step = Math.hypot(b.vx, b.vy) > 10 && b.zGrounded ? Math.floor(s.time * 10) % 2 : 0;
-      G.sprites.hero(ctx, p.x, p.y, { facing, step });
+      G.sprites.hero(ctx, p.x, p.y, { facing, step, skin: s.world.skins.get('hero') });
       if (this.castT > 0.15) {
         ctx.fillStyle = 'rgba(255,180,70,0.5)';
         ctx.beginPath();
@@ -421,7 +421,7 @@
       const hero = s.hero.body;
       const facing = Math.sign((hero.x - b.x) - (hero.y - b.y)) || 1;
       G.sprites.monster(ctx, this.kind, p.x, p.y, {
-        t: this.t, flash: this.flash > 0, facing, scale: this.kind === 'dragon' ? 0.8 : 1,
+        t: this.t, flash: this.flash > 0, facing, scale: this.kind === 'dragon' ? 0.8 : 1, skin: s.world.skins.get(this.kind),
       });
       // 群れの数
       if (this.size > 1) G.draw.text(ctx, `×${this.size}`, p.x, p.y - (this.kind === 'dragon' ? 44 : 30), { size: 11, align: 'center', color: '#ffef7a' });
@@ -518,6 +518,8 @@
       const rows = MAP.map((r) => r.replace(/[PNIC]/g, '.'));
       const map = new TileMap(rows, T, { solid: ['#', 'T', '~'] });
       super(game, { gravity: 0, zGravity: 800, map, cellSize: 64 });
+      // 画像の見た目は imageFit プラグインで管理する。登録はゲーム全体で共有し、やり直しても残す
+      this.world.use(G.plugins.imageFit, { skins: game.skins ??= new Map() });
       this.style = G.styles[styleId];
       this.shake = 0;
       this.camX = 0;

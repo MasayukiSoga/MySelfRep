@@ -88,6 +88,8 @@
     }
 
     top(f) { return f.y - HEIGHT[f.kind] * f.scale; }
+    // フィールドの物理ワールドに imageFit プラグインで登録された画像の見た目
+    skin(key) { return this.scene.world?.skins?.get(key); }
 
     get alive() { return this.foes.filter((f) => f.hp > 0); }
 
@@ -315,7 +317,9 @@
         ctx.ellipse(f.x, f.y, 9 * scale, 2.4 * scale, 0, 0, Math.PI * 2);
         ctx.fill();
         const fy = f.kind === 'bat' ? f.y - (4 - Math.sin(f.t * 3) * 1.3) * scale : f.y;
-        G.sprites.monster(ctx, f.kind, f.x + dx, fy, { t: f.t, flash: f.flash > 0 && Math.floor(f.flash * 20) % 2 === 0, scale, alpha: f.alpha });
+        G.sprites.monster(ctx, f.kind, f.x + dx, fy, {
+          t: f.t, flash: f.flash > 0 && Math.floor(f.flash * 20) % 2 === 0, scale, alpha: f.alpha, skin: this.skin(f.kind),
+        });
       }
 
       const hx = h.x - Math.sin((h.lunge / 0.35) * Math.PI) * 24;
@@ -329,7 +333,7 @@
       ctx.beginPath();
       ctx.ellipse(hx, h.y, 20, 6, 0, 0, Math.PI * 2);
       ctx.fill();
-      if (!(h.flash > 0 && Math.floor(h.flash * 20) % 2)) G.sprites.hero(ctx, hx, h.y, { scale: 3, facing: -1 });
+      if (!(h.flash > 0 && Math.floor(h.flash * 20) % 2)) G.sprites.hero(ctx, hx, h.y, { scale: 3, facing: -1, skin: this.skin('hero') });
 
       if (this.projectile) {
         const q = this.projectile;

@@ -212,6 +212,27 @@
   .shared td { color: var(--muted); }
   .note { margin: 10px 0 0; font-size: 13px; color: var(--muted); }
 
+  .skin p { margin: 0 0 10px; color: var(--muted); font-size: 13px; max-width: 70ch; }
+  .skin-row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+  .skin-row + .skin-row { margin-top: 10px; }
+  .skin label { font-size: 13px; }
+  .skin select, .skin button, .skin .file {
+    font: inherit;
+    font-size: 13px;
+    color: var(--fg);
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 6px 10px;
+    cursor: pointer;
+  }
+  .skin button:hover, .skin .file:hover { border-color: var(--muted); }
+  .skin .file { display: inline-block; }
+  .skin .file:focus-within { outline: 2px solid var(--fg); outline-offset: 2px; }
+  .skin input[type="file"] { position: absolute; width: 1px; height: 1px; opacity: 0; }
+  .skin select:focus-visible, .skin button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+  #skin-status { margin: 10px 0 0; font-size: 13px; color: var(--fg); min-height: 1.7em; overflow-wrap: anywhere; }
+
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 <!-- fragment:head-end -->
@@ -288,10 +309,37 @@
       <p class="note">シンボル1つは最大30体の群れで、頭上の「×12」が数です。群れの上限はレベルとともに増え、レベル5から30体になります。モンスターは切り替えても消えません。ACT で弱らせたゴブリンに RPG でぶつかると、弱ったままのゴブリンとバトルになります。バトルから逃げると、そのモンスターは残り HP のままフィールドに残ります。</p>
     </div>
   </section>
+
+  <section class="card skin" aria-labelledby="skin-title">
+    <h2 id="skin-title">画像で見た目を変える</h2>
+    <p>手持ちの画像をキャラクターの見た目にできます。大きな画像でも、透明な余白を切り取り、当たり判定の大きさに合わせてきれいに縮小します。物理エンジンのプラグイン（imageFit）を使っています。</p>
+    <div class="skin-row">
+      <label for="skin-target">キャラクター</label>
+      <select id="skin-target">
+        <option value="hero">勇者</option>
+        <option value="slime" selected>スライム</option>
+        <option value="bat">コウモリ</option>
+        <option value="goblin">ゴブリン</option>
+        <option value="dragon">ドラゴン</option>
+      </select>
+      <label for="skin-mode">縮小のしかた</label>
+      <select id="skin-mode">
+        <option value="smooth">なめらか（イラスト・写真）</option>
+        <option value="pixel">くっきり（ドット絵）</option>
+      </select>
+    </div>
+    <div class="skin-row">
+      <label class="file">画像を選ぶ<input type="file" id="skin-file" accept="image/*"></label>
+      <button type="button" id="skin-sample">サンプル画像で試す（1200×1000）</button>
+      <button type="button" id="skin-reset">元の絵に戻す</button>
+    </div>
+    <p id="skin-status" aria-live="polite"></p>
+  </section>
 </div>
 
 <script src="src/engine/physics.js"></script>
 <script src="src/engine/core.js"></script>
+<script src="src/plugins/image-fit.js"></script>
 <script src="src/game/data.js"></script>
 <script src="src/game/sprites.js"></script>
 <script src="src/modes/battle.js"></script>

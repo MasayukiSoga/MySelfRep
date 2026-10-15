@@ -31,6 +31,7 @@
 |---|---|
 | `src/engine/physics.js` | 簡易物理エンジン（当たり判定、壁との押し戻し、重なったときのイベント、高さ方向のジャンプ） |
 | `src/engine/core.js` | 入力、シーン、ゲームループ、画面表示の共通部分 |
+| `src/plugins/image-fit.js` | 物理エンジンのプラグイン。大きな画像をきれいに縮小して物体に合わせる |
 | `src/game/data.js` | モンスター・魔法のデータと、勇者の成長・ダメージ計算 |
 | `src/game/sprites.js` | 勇者とモンスターの見た目 |
 | `src/modes/field.js` | 共通のフィールド（斜め見下ろし） |
@@ -38,6 +39,35 @@
 | `src/modes/battle.js` | RPG スタイルのバトル画面 |
 
 フィールドは内部では真上から見た2Dとして計算し、描画するときだけ斜めに変換しています。スタイルを切り替えても物理の設定は変わりません。
+
+## プラグイン
+
+物理エンジンには `world.use(plugin, options)` で機能を足せます。プラグインは次のうち必要なものだけを持つオブジェクトです。
+
+| フック | 呼ばれるとき |
+|---|---|
+| `install(world, options)` | `use()` したとき1回 |
+| `onAdd(body, world)` / `onRemove(body, world)` | 物体を追加・削除したとき |
+| `beforeStep(world, dt)` / `afterStep(world, dt)` | 毎ステップの前後 |
+
+### imageFit（画像の縮小）
+
+大きな画像を、キャラクターの当たり判定の大きさに合わせてきれいに縮小します。ページ下の「画像で見た目を変える」から、手持ちの画像やサンプル画像で試せます。
+
+- 透明な余白を自動で切り取る
+- 面積平均で縮小するので、細い線が途切れず、ギザギザにならない
+- 色に不透明度を掛けてから平均するので、半透明のふちが黒ずまない
+- 画面に実際に出る大きさ（拡大率込み）で縮小し、大きさごとに結果を覚えておく
+- 512px を超える画像は、最初に一度だけ 512px 以下にしておく
+- ドット絵向けの「くっきり」モード（色を混ぜない）
+
+```js
+world.use(Game.plugins.imageFit);                       // world.skins ができる
+const skin = Game.plugins.imageFit.fromImage(img);      // img / canvas から作る
+world.skins.set('slime', skin);                         // 名前で登録して描画に使う
+Game.plugins.imageFit.attach(body, skin, { maxW: 24, maxH: 24, hitbox: true });
+                                                        // 当たり判定を画像の見えている部分に合わせる
+```
 
 ## 開発
 

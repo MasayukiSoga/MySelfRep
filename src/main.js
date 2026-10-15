@@ -17,7 +17,7 @@
     const input = new G.Input();
     input.attachKeyboard(window);
     // 主人公の成長はスタイルを切り替えても共通
-    const game = { input, party: new G.Party() };
+    const game = { input, party: new G.Party(), skins: new Map() };
     let scene = new G.FieldScene(game, ORDER.includes(saved?.style) ? saved.style : 'rpg');
     let debug = false;
     let started = false;
@@ -77,6 +77,7 @@
     window.addEventListener('blur', () => input.releaseAll());
 
     setupTouch(input, start);
+    setupSkins(game);
 
     window.claude?.hot?.snapshot?.(() => ({ style: scene.style.id }));
 
@@ -101,6 +102,90 @@
       },
     );
     loop.start();
+  }
+
+  // 画像で見た目を変える（物理エンジンの imageFit プラグイン）
+  function setupSkins(game) {
+    const $ = (id) => document.getElementById(id);
+    const target = $('skin-target'), mode = $('skin-mode'), status = $('skin-status');
+    if (!target) return;
+    const name = () => target.selectedOptions[0].textContent;
+
+    const apply = (image) => {
+      const t0 = performance.now();
+      const skin = G.plugins.imageFit.fromImage(image, { mode: mode.value });
+      game.skins.set(target.value, skin);
+      const { width, height } = skin.source, cut = skin.trimmed;
+      const ms = Math.round(performance.now() - t0);
+      status.textContent = `${name()}の見た目を ${width}×${height} の画像にしました。`
+        + `余白を切り取った ${cut.w}×${cut.h} を、表示する大きさに合わせて縮小します（下ごしらえ ${ms} ms）。`;
+    };
+
+    $('skin-file').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => { apply(img); URL.revokeObjectURL(url); };
+      img.onerror = () => {
+        status.textContent = `「${file.name}」は画像として読み込めませんでした。PNG・JPEG・GIF・WebP などを選んでください。`;
+        URL.revokeObjectURL(url);
+      };
+      img.src = url;
+      e.target.value = '';
+    });
+    $('skin-sample').addEventListener('click', () => apply(sampleImage()));
+    $('skin-reset').addEventListener('click', () => {
+      game.skins.delete(target.value);
+      status.textContent = `${name()}を元の絵に戻しました。`;
+    });
+  }
+
+  // 縮小の具合を見るための大きな画像（1200×1000）。まわりは透明で、細い線と半透明のふちがある
+  function sampleImage() {
+    const c = Object.assign(document.createElement('canvas'), { width: 1200, height: 1000 });
+    const g = c.getContext('2d');
+    const cx = 600, cy = 560;
+    const glow = g.createRadialGradient(cx, cy, 200, cx, cy, 380);
+    glow.addColorStop(0, 'rgba(255,214,90,0.7)');
+    glow.addColorStop(1, 'rgba(255,214,90,0)');
+    g.fillStyle = glow;
+    g.fillRect(0, 0, 1200, 1000);
+    const body = g.createRadialGradient(cx - 90, cy - 120, 40, cx, cy, 300);
+    body.addColorStop(0, '#ffe7a8');
+    body.addColorStop(1, '#e0703a');
+    g.fillStyle = body;
+    g.beginPath();
+    g.ellipse(cx, cy, 300, 260, 0, 0, Math.PI * 2);
+    g.fill();
+    g.lineWidth = 14;
+    g.strokeStyle = '#4a2410';
+    g.stroke();
+    for (const ex of [-110, 110]) {
+      g.fillStyle = '#2a1408';
+      g.beginPath();
+      g.ellipse(cx + ex, cy - 40, 38, 52, 0, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = '#fff';
+      g.beginPath();
+      g.arc(cx + ex - 12, cy - 60, 14, 0, Math.PI * 2);
+      g.fill();
+    }
+    g.lineWidth = 3;
+    g.strokeStyle = '#4a2410';
+    for (const s of [-1, 1]) {
+      for (let i = 0; i < 3; i++) {
+        g.beginPath();
+        g.moveTo(cx + s * 150, cy + 40 + i * 22);
+        g.lineTo(cx + s * 280, cy + 20 + i * 34);
+        g.stroke();
+      }
+    }
+    g.lineWidth = 12;
+    g.beginPath();
+    g.arc(cx, cy + 40, 90, 0.2 * Math.PI, 0.8 * Math.PI);
+    g.stroke();
+    return c;
   }
 
   // 画面上の十字キーと A・B・C ボタン（スマホ用）
