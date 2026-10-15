@@ -320,3 +320,95 @@ test('宝箱は一度開けたら、やり直しても空のまま', () => {
   assert.deepEqual(scene.chests[0].interact(), ['からっぽだ。']);
   assert.equal(scene.found, 1);
 });
+
+const group = (kind, n) => Array.from({ length: n }, () => ({ kind }));
+
+test('群れ：30体のバトルでも全員が画面内に並び、名前が重ならない', () => {
+  const game = newGame();
+  const scene = new G.FieldScene(game, 'rpg');
+  scene.startBattle(group('slime', 30));
+  const { foes } = scene.battle;
+  assert.equal(foes.length, 30);
+  for (const f of foes) {
+    assert.ok(f.x > 0 && f.x < 340, `x=${f.x}`);
+    assert.ok(scene.battle.top(f) > 0 && f.y < 246, `y=${f.y}`);
+  }
+  assert.equal(new Set(foes.map((f) => f.name)).size, 30);
+  assert.equal(foes[29].name, 'スライムAD');
+  scene.draw(fakeContext());
+});
+
+test('群れ：敵のターンに攻撃してくるのは前列の3体まで', () => {
+  const game = newGame();
+  const scene = new G.FieldScene(game, 'rpg');
+  game.party.hp = game.party.maxHp = 9999;
+  scene.startBattle(group('slime', 30));
+  scene.battle.enemyTurn();
+  const attacks = scene.battle.queue.filter((q) => q.text.endsWith('の こうげき！'));
+  assert.equal(attacks.length, 3);
+});
+
+test('群れ：フレアは敵全体に当たる', () => {
+  const game = newGame();
+  const scene = new G.FieldScene(game, 'rpg');
+  game.party.level = 5;
+  game.party.recalc();
+  game.party.mp = game.party.maxMp;
+  scene.startBattle(group('slime', 20));
+  scene.battle.castAll(G.data.SPELLS.flare);
+  for (let i = 0; i < 200 && scene.battle.queue.length; i++) scene.battle.update(1);
+  assert.equal(scene.battle.alive.length, 0);
+  assert.equal(game.party.mp, game.party.maxMp - G.data.SPELLS.flare.mp);
+});
+
+test('群れ：フィールドで先頭を倒すと次の1体が出てきて、全員倒すとシンボルが消える', () => {
+  const game = newGame();
+  const scene = new G.FieldScene(game, 'act');
+  const b = scene.hero.body;
+  const m = scene.add(new FieldMonster(scene, 'slime', b.x + 200, b.y, [{ kind: 'bat' }, { kind: 'goblin' }]));
+  assert.equal(m.size, 3);
+  m.damage(999, 1, 0);
+  assert.equal(m.size, 2);
+  assert.equal(m.kind, 'bat');
+  assert.equal(m.body.gravityScale, 0, 'コウモリになったら飛ぶ');
+  m.damage(999, 1, 0);
+  m.damage(999, 1, 0);
+  assert.ok(m.dead);
+  const { MONSTERS } = G.data;
+  assert.equal(game.party.exp, MONSTERS.slime.exp + MONSTERS.bat.exp + MONSTERS.goblin.exp);
+});
+
+test('群れ：RPG でぶつかると群れ全体とバトルになり、逃げると生き残りがシンボルに戻る', () => {
+  const game = newGame();
+  const scene = new G.FieldScene(game, 'rpg');
+  const m = touch(scene, 'slime');
+  m.followers = group('slime', 9).map((f) => ({ ...f, hp: 6 }));
+  steps(scene, 2);
+  assert.equal(scene.battle.foes.length, 10);
+  // 先頭の2体を倒してから逃げる
+  scene.battle.foes[0].hp = 0;
+  scene.battle.foes[1].hp = 0;
+  scene.battle.foes[2].hp = 2;
+  const origRandom = Math.random;
+  Math.random = () => 0;
+  finishBattle(scene, 2);
+  Math.random = origRandom;
+  assert.equal(m.size, 8);
+  assert.equal(m.hp, 2, '生き残りの先頭が新しい先頭になる');
+  assert.equal(game.party.exp, G.data.MONSTERS.slime.exp * 2, '倒した2体分の経験値は入る');
+});
+
+test('群れの数は最大30体', () => {
+  const game = newGame();
+  game.party.level = 20;
+  const scene = new G.FieldScene(game, 'act');
+  let max = 0;
+  for (let i = 0; i < 400; i++) {
+    scene.spawnMonster();
+    for (const m of scene.monsters) max = Math.max(max, m.size);
+    for (const m of scene.monsters) scene.kill(m);
+    steps(scene, 1);
+  }
+  assert.ok(max <= 30);
+  assert.ok(max >= 20, `大きな群れも出る（最大 ${max}）`);
+});

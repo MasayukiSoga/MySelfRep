@@ -18,6 +18,7 @@
 
   const SPELLS = {
     fire: { name: 'ファイア', mp: 3, power: 8 },
+    flare: { name: 'フレア', mp: 6, power: 5, all: true }, // 敵全体に当たる（バトル画面専用）
     heal: { name: 'ヒール', mp: 4, power: 14 },
   };
 

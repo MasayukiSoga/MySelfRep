@@ -313,21 +313,41 @@
   const RADIUS = { slime: 9, bat: 8, goblin: 9, dragon: 18 };
   const SPEED = { slime: 40, bat: 55, goblin: 35, dragon: 28 };
 
-  // フィールドに出てくるモンスターのシンボル（ACT・STG スタイル）
+  // フィールドに出てくるモンスターのシンボル。1つのシンボルが最大30体の群れを表す
+  // 先頭（kind・hp）がフィールドで見えている1体で、残りは followers に並んで待っている
   class FieldMonster {
-    constructor(scene, kind, x, y) {
+    constructor(scene, kind, x, y, followers = []) {
       this.scene = scene;
       this.kind = kind;
       this.hp = MONSTERS[kind].hp;
+      this.followers = followers.map((f) => ({ kind: f.kind, hp: f.hp ?? MONSTERS[f.kind].hp }));
       this.t = rand(0, 3);
       this.flash = 0;
       this.kb = 0;
       this.hop = rand(0, 0.6);
       this.fire = rand(1, 2);
       this.wander = { x: 0, y: 0, t: 0 };
-      const flying = kind === 'bat';
-      this.body = new Body({ x, y, r: RADIUS[kind], owner: this, layer: Layer.ENEMY, gravityScale: flying ? 0 : 1 });
-      if (flying) this.body.z = 14;
+      this.body = new Body({ x, y, r: RADIUS[kind], owner: this, layer: Layer.ENEMY });
+      this.become(kind);
+    }
+    get size() { return 1 + this.followers.length; }
+    // バトル画面に渡す群れ全体
+    members() { return [{ kind: this.kind, hp: this.hp }, ...this.followers.map((f) => ({ ...f }))]; }
+    // バトルで残った群れに入れ替える（先頭が倒されていたら次が先頭になる）
+    setMembers(list) {
+      const [lead, ...rest] = list;
+      this.become(lead.kind);
+      this.hp = lead.hp;
+      this.followers = rest;
+    }
+    // 先頭のモンスターの種類に合わせて、体の大きさと飛ぶかどうかを変える
+    become(kind) {
+      const b = this.body;
+      this.kind = kind;
+      b.r = b.hw = b.hh = RADIUS[kind];
+      b.gravityScale = kind === 'bat' ? 0 : 1;
+      b.z = kind === 'bat' ? 14 : 0;
+      b.vz = 0;
     }
     damageTo(party) { return party.damageFrom(this.kind); }
     update(dt) {
@@ -386,7 +406,12 @@
       if (this.hp > 0) return;
       s.reward(this.kind, b.x, b.y, 44 + b.z);
       s.particles.burst(b.x, b.y, { count: this.kind === 'dragon' ? 50 : 14, speed: 90, color: '#e9e6ff', z: 8 + b.z });
-      s.kill(this);
+      // 群れの残りがいれば、次の1体が前に出てくる
+      const next = this.followers.shift();
+      if (!next) { s.kill(this); return; }
+      this.become(next.kind);
+      this.hp = next.hp;
+      this.kb = 0.4;
     }
     draw(ctx) {
       const s = this.scene, b = this.body;
@@ -398,6 +423,8 @@
       G.sprites.monster(ctx, this.kind, p.x, p.y, {
         t: this.t, flash: this.flash > 0, facing, scale: this.kind === 'dragon' ? 0.8 : 1,
       });
+      // 群れの数
+      if (this.size > 1) G.draw.text(ctx, `×${this.size}`, p.x, p.y - (this.kind === 'dragon' ? 44 : 30), { size: 11, align: 'center', color: '#ffef7a' });
     }
   }
 
@@ -474,6 +501,18 @@
     return level >= 2 ? ['slime', 'slime', 'bat', 'goblin'] : ['slime', 'slime', 'bat'];
   }
 
+  const MAX_GROUP = 30;
+  // 群れの数。小さい群れほど出やすく、上限はレベルとともに増えて最大30体（レベル5から）
+  function groupSize(level) {
+    const max = Math.min(MAX_GROUP, 5 + level * 5);
+    return 1 + Math.floor(Math.random() ** 2 * max);
+  }
+  // 群れの仲間。7割は先頭と同じ種類
+  function followersFor(kind, level) {
+    if (kind === 'dragon') return [];
+    return Array.from({ length: groupSize(level) - 1 }, () => ({ kind: Math.random() < 0.7 ? kind : pick(monsterPool(level)) }));
+  }
+
   class FieldScene extends Scene {
     constructor(game, styleId = 'rpg') {
       const rows = MAP.map((r) => r.replace(/[PNIC]/g, '.'));
@@ -542,11 +581,11 @@
 
     openDialog(lines) { this.dialog = { lines, i: 0 }; }
 
-    // シンボルにぶつかったら、そのモンスター（残り HP もそのまま）とバトル
+    // シンボルにぶつかったら、その群れ全体（残り HP もそのまま）とバトル
     encounter(monster) {
       if (this.battle || this.encounterWait > 0 || monster.dead) return;
       this.symbol = monster;
-      this.startBattle([{ kind: monster.kind, hp: monster.hp }]);
+      this.startBattle(monster.members());
     }
 
     startBattle(foes) {
@@ -562,12 +601,15 @@
       this.symbol = null;
       if (result === 'lose') { this.gameOver(); return; }
       if (!symbol) return;
-      // 勝ったらシンボルは消える（経験値はバトル画面で受け取り済み）。逃げたら残り HP のまま残る
-      if (result === 'win') this.kill(symbol);
-      else {
-        symbol.hp = foes[0].hp;
-        this.encounterWait = 2;
-      }
+      // 勝ったらシンボルは消える（経験値はバトル画面で受け取り済み）
+      if (result === 'win') { this.kill(symbol); return; }
+      // 逃げたら、倒した分の経験値をもらい、生き残った群れが残り HP のままフィールドに残る
+      const b = this.hero.body;
+      for (const f of foes) if (f.hp <= 0) this.reward(f.kind, b.x, b.y, 40);
+      const alive = foes.filter((f) => f.hp > 0).map(({ kind, hp }) => ({ kind, hp }));
+      if (alive.length) symbol.setMembers(alive);
+      else this.kill(symbol);
+      this.encounterWait = 2;
     }
 
     gameOver() {
@@ -589,7 +631,7 @@
         const level = this.party.level;
         const kind = level >= 3 && Math.random() < 0.05 && !this.monsters.some((m) => m.kind === 'dragon')
           ? 'dragon' : pick(monsterPool(level));
-        this.add(new FieldMonster(this, kind, x, y));
+        this.add(new FieldMonster(this, kind, x, y, followersFor(kind, level)));
         return;
       }
     }

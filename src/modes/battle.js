@@ -13,7 +13,17 @@
   const { MONSTERS, SPELLS } = G.data;
 
   const COMMANDS = ['たたかう', 'まほう', 'にげる'];
-  const SPELL_LIST = [SPELLS.fire, SPELLS.heal];
+  const SPELL_LIST = [SPELLS.fire, SPELLS.flare, SPELLS.heal];
+  const MAX_ROW = 10; // 1列に並べる最大数。30体なら 10体×3列
+  const FRONT = 3; // 1ターンに攻撃してくるのは前列の先頭から3体まで
+  const HEIGHT = { slime: 14, bat: 24, goblin: 22, dragon: 48 }; // 見た目の高さ（拡大前）
+
+  // 同じモンスターが複数いたときの呼び名：A〜Z、そのあとは AA、AB…
+  function label(i) {
+    let s = '';
+    for (let n = i + 1; n > 0; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(65 + ((n - 1) % 26)) + s;
+    return s;
+  }
 
   class Battle {
     // foes：モンスターの種類の配列。{ kind, hp } を渡すと、フィールドで削った残りの HP から始まる
@@ -38,24 +48,46 @@
       this.projectile = null;
       this.hero = { x: 392, y: 212, lunge: 0, flash: 0, glow: 0 };
 
-      // 同じモンスターが複数いたら A・B・C を付けて呼び分ける
+      // 同じモンスターが複数いたら A・B・C… を付けて呼び分ける
       const specs = foes.map((f) => (typeof f === 'string' ? { kind: f } : f));
       const total = {}, seen = {};
       for (const { kind } of specs) total[kind] = (total[kind] ?? 0) + 1;
-      this.foes = specs.map(({ kind, hp }, i) => {
+      this.foes = specs.map(({ kind, hp }) => {
         let name = MONSTERS[kind].name;
-        if (total[kind] > 1) name += 'ABC'[(seen[kind] = (seen[kind] ?? -1) + 1)];
+        if (total[kind] > 1) name += label((seen[kind] = (seen[kind] ?? -1) + 1));
         return {
           kind, name, hp: hp ?? MONSTERS[kind].hp,
-          x: 170 + (i - (specs.length - 1) / 2) * 92, y: 212,
-          flash: 0, alpha: 1, dying: false, lunge: 0, t: rand(0, 3),
+          x: 0, y: 0, scale: 3, flash: 0, alpha: 1, dying: false, lunge: 0, t: rand(0, 3),
         };
       });
+      this.layout();
 
-      const first = this.foes[0].name.replace(/[ABC]$/, '');
-      this.say(this.foes.length > 1 ? `${first}たちが あらわれた！` : `${first}が あらわれた！`, null, 1.2);
+      const n = this.foes.length;
+      const kinds = Object.keys(total);
+      const name = MONSTERS[kinds[0]].name;
+      this.say(n === 1 ? `${name}が あらわれた！`
+        : kinds.length === 1 ? `${name}が ${n}ひき あらわれた！`
+          : `まものの むれが ${n}ひき あらわれた！`, null, 1.2);
       this.run(() => this.toCommand());
     }
+
+    // 数に合わせて並べる。少なければ大きく1列、多ければ小さく最大 10体×3列。先頭が手前の列
+    layout() {
+      const n = this.foes.length;
+      const cols = n <= 3 ? n : n <= 8 ? Math.ceil(n / 2) : Math.min(MAX_ROW, Math.ceil(n / 3));
+      const scale = n <= 3 ? 3 : n <= 8 ? 2 : 1.2;
+      const gap = n <= 3 ? 92 : 300 / cols;
+      const rowGap = n <= 8 ? 36 : 30;
+      this.foes.forEach((f, i) => {
+        const r = Math.floor(i / cols), c = i % cols;
+        const inRow = Math.min(cols, n - r * cols);
+        f.x = 170 + (c - (inRow - 1) / 2) * gap + (r % 2 ? gap / 4 : 0);
+        f.y = 222 - r * rowGap;
+        f.scale = f.kind === 'dragon' ? scale * (2 / 3) : scale;
+      });
+    }
+
+    top(f) { return f.y - HEIGHT[f.kind] * f.scale; }
 
     get alive() { return this.foes.filter((f) => f.hp > 0); }
 
@@ -120,6 +152,7 @@
         const spell = SPELL_LIST[this.spellCursor];
         if (!this.party.canCast(spell)) { this.text = 'MPが たりない！'; return; }
         if (spell === SPELLS.heal) this.castHeal();
+        else if (spell.all) this.castAll(spell);
         else this.chooseTarget({ type: 'fire' });
       } else if (this.mode === 'target') {
         const alive = this.alive;
@@ -146,7 +179,7 @@
         this.say(`${p.name}は ファイアを となえた！`, () => {
           p.cast(SPELLS.fire);
           h.glow = 0.5;
-          this.projectile = { x0: h.x - 30, y0: h.y - 36, x1: foe.x, y1: foe.y - 20, t: 0 };
+          this.projectile = { x0: h.x - 30, y0: h.y - 36, x1: foe.x, y1: (foe.y + this.top(foe)) / 2, t: 0 };
         }, 0.7);
         this.hitFoe(foe, p.spellDamage(foe.kind), '#ffb347');
       }
@@ -157,10 +190,37 @@
       this.say(`${foe.name}に ${dmg} の ダメージ！`, () => {
         foe.hp = Math.max(0, foe.hp - dmg);
         foe.flash = 0.3;
-        this.popup(foe.x, foe.y - 52, String(dmg));
-        this.particles.burst(foe.x, foe.y - 24, { count: 14, speed: 140, color, life: 0.4 });
+        this.popup(foe.x, this.top(foe), String(dmg));
+        this.particles.burst(foe.x, (foe.y + this.top(foe)) / 2, { count: 14, speed: 140, color, life: 0.4 });
       }, 0.8);
       if (foe.hp - dmg <= 0) this.say(`${foe.name}を たおした！`, () => { foe.dying = true; }, 0.8);
+    }
+
+    // 敵全体への魔法。何十体いてもメッセージは数行にまとめる
+    castAll(spell) {
+      const p = this.party;
+      const hits = this.alive.map((f) => ({ f, dmg: p.spellDamage(f.kind, spell) }));
+      const dmgs = hits.map((h) => h.dmg);
+      const lo = Math.min(...dmgs), hi = Math.max(...dmgs);
+      const killed = hits.filter(({ f, dmg }) => f.hp - dmg <= 0);
+      this.say(`${p.name}は ${spell.name}を となえた！`, () => {
+        p.cast(spell);
+        this.hero.glow = 0.6;
+        this.shake = 0.3;
+      }, 0.7);
+      this.say(`まものたちに ${lo === hi ? lo : `${lo}〜${hi}`} の ダメージ！`, () => {
+        for (const { f, dmg } of hits) {
+          f.hp = Math.max(0, f.hp - dmg);
+          f.flash = 0.3;
+          this.popup(f.x, this.top(f), String(dmg));
+          this.particles.burst(f.x, (f.y + this.top(f)) / 2, { count: 6, speed: 110, color: '#ff9a4a', life: 0.4 });
+        }
+      }, 0.9);
+      if (killed.length) {
+        const text = killed.length === 1 ? `${killed[0].f.name}を たおした！` : `${killed.length}ひきを たおした！`;
+        this.say(text, () => { for (const { f } of killed) f.dying = true; }, 0.8);
+      }
+      this.run(() => this.afterPlayer());
     }
 
     castHeal() {
@@ -195,7 +255,8 @@
     enemyTurn() {
       const p = this.party, h = this.hero;
       let hp = p.hp;
-      for (const foe of this.alive) {
+      // 群れ全員が攻撃すると一瞬で倒されるので、攻撃してくるのは前列の先頭の数体だけ
+      for (const foe of this.alive.slice(0, FRONT)) {
         const dmg = p.damageFrom(foe.kind);
         this.say(`${foe.name}の こうげき！`, () => { foe.lunge = 0.35; }, 0.6);
         this.say(`${p.name}は ${dmg} の ダメージを うけた！`, () => {
@@ -230,6 +291,8 @@
     draw(ctx) {
       const D = G.draw, p = this.party, h = this.hero;
       ctx.save();
+      ctx.fillStyle = '#0e0c28';
+      ctx.fillRect(0, 0, W, H);
       if (this.shake > 0) ctx.translate(rand(-3, 3), rand(-3, 3));
       const sky = ctx.createLinearGradient(0, 0, 0, 170);
       sky.addColorStop(0, '#1b1f4a');
@@ -242,15 +305,16 @@
       ctx.fillStyle = ground;
       ctx.fillRect(0, 150, W, 90);
 
-      for (const f of this.foes) {
+      // 奥の列から描くと、手前の列が上に重なる
+      for (const f of [...this.foes].reverse()) {
         if (f.alpha <= 0) continue;
-        const scale = f.kind === 'dragon' ? 2 : 3;
+        const scale = f.scale;
         const dx = Math.sin((f.lunge / 0.35) * Math.PI) * 16;
         ctx.fillStyle = 'rgba(0,0,0,0.25)';
         ctx.beginPath();
-        ctx.ellipse(f.x, f.y, 26, 7, 0, 0, Math.PI * 2);
+        ctx.ellipse(f.x, f.y, 9 * scale, 2.4 * scale, 0, 0, Math.PI * 2);
         ctx.fill();
-        const fy = f.kind === 'bat' ? f.y - 12 + Math.sin(f.t * 3) * 4 : f.y;
+        const fy = f.kind === 'bat' ? f.y - (4 - Math.sin(f.t * 3) * 1.3) * scale : f.y;
         G.sprites.monster(ctx, f.kind, f.x + dx, fy, { t: f.t, flash: f.flash > 0 && Math.floor(f.flash * 20) % 2 === 0, scale, alpha: f.alpha });
       }
 
@@ -277,7 +341,7 @@
 
       if (this.mode === 'target') {
         const f = this.alive[this.targetCursor];
-        if (f) D.text(ctx, '▼', f.x, f.y - (f.kind === 'dragon' ? 112 : 84) + Math.sin(this.t * 8) * 2, { size: 14, align: 'center', color: '#ffef7a' });
+        if (f) D.text(ctx, '▼', f.x, this.top(f) - 18 + Math.sin(this.t * 8) * 2, { size: 14, align: 'center', color: '#ffef7a' });
       }
 
       // 下の枠：メッセージ、またはコマンドとステータス
@@ -305,9 +369,15 @@
         if (this.mode !== 'target') D.text(ctx, '▶', 16, top + 11 + cur * 20, { size: 12, shadow: false, color: '#ffef7a' });
 
         box(140, top, 186, bh);
-        const msg = this.text || (this.mode === 'target' ? 'だれを ねらう？' : this.mode === 'spell' ? 'どの まほうを つかう？' : '');
+        const target = this.alive[this.targetCursor];
+        const msg = this.text || (this.mode === 'target' ? `${target?.name ?? ''}を ねらう？` : this.mode === 'spell' ? 'どの まほうを つかう？' : '');
         if (msg) D.text(ctx, msg, 152, top + 10, { size: 13, shadow: false, color: '#ffef7a' });
-        this.alive.forEach((f, i) => D.text(ctx, f.name, 152, top + 30 + i * 16, { size: 12, shadow: false, color: '#c9c4f0' }));
+        // 残っている敵は種類ごとの数で表示する（30体いても枠に収まる）
+        const counts = {};
+        for (const f of this.alive) counts[f.kind] = (counts[f.kind] ?? 0) + 1;
+        Object.entries(counts).forEach(([kind, c], i) => {
+          D.text(ctx, `${MONSTERS[kind].name}${c > 1 ? ` ×${c}` : ''}`, 152, top + 28 + i * 13, { size: 11, shadow: false, color: '#c9c4f0' });
+        });
 
         box(332, top, W - 338, bh);
         D.text(ctx, `${p.name}  Lv${p.level}`, 344, top + 10, { size: 13, shadow: false });
