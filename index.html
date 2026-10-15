@@ -312,7 +312,7 @@
 
   <section class="card skin" aria-labelledby="skin-title">
     <h2 id="skin-title">画像で見た目を変える</h2>
-    <p>手持ちの画像をキャラクターの見た目にできます。大きな画像でも、透明な余白を切り取り、当たり判定の大きさに合わせてきれいに縮小します。物理エンジンのプラグイン（imageFit）を使っています。</p>
+    <p>手持ちの画像をキャラクターの見た目にできます。大きな画像でも、透明な余白を切り取り、当たり判定の大きさに合わせて縮小します。標準の「ドット化」は、いったん荒いドット絵に加工してから縮小するので、ゲームのドット絵になじみます。物理エンジンのプラグイン（imageFit）を使っています。</p>
     <div class="skin-row">
       <label for="skin-target">キャラクター</label>
       <select id="skin-target">
@@ -322,17 +322,15 @@
         <option value="goblin">ゴブリン</option>
         <option value="dragon">ドラゴン</option>
       </select>
-      <label for="skin-mode">縮小のしかた</label>
-      <select id="skin-mode">
-        <option value="smooth">なめらか（イラスト・写真）</option>
-        <option value="pixel">くっきり（ドット絵）</option>
-      </select>
+      <label for="skin-mode">縮小プラグイン</label>
+      <select id="skin-mode" aria-describedby="skin-mode-note"></select>
     </div>
     <div class="skin-row">
       <label class="file">画像を選ぶ<input type="file" id="skin-file" accept="image/*"></label>
       <button type="button" id="skin-sample">サンプル画像で試す（1200×1000）</button>
       <button type="button" id="skin-reset">元の絵に戻す</button>
     </div>
+    <p id="skin-mode-note" class="note">縮小プラグインは、読み込んだ画像すべてにすぐ反映されます。選択肢は、読み込まれている縮小プラグインから作っています。</p>
     <p id="skin-status" aria-live="polite"></p>
   </section>
 </div>
@@ -340,6 +338,7 @@
 <script src="src/engine/physics.js"></script>
 <script src="src/engine/core.js"></script>
 <script src="src/plugins/image-fit.js"></script>
+<script src="src/plugins/shrink-dot.js"></script>
 <script src="src/game/data.js"></script>
 <script src="src/game/sprites.js"></script>
 <script src="src/modes/battle.js"></script>

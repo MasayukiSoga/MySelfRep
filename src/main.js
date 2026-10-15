@@ -109,11 +109,21 @@
     const $ = (id) => document.getElementById(id);
     const target = $('skin-target'), mode = $('skin-mode'), status = $('skin-status');
     if (!target) return;
+    const fit = G.plugins.imageFit;
     const name = () => target.selectedOptions[0].textContent;
+
+    // 選択肢は、登録されている縮小プラグインから作る（プラグインを足せば本体を変えずに増える）
+    for (const [id, plugin] of Object.entries(fit.shrinkers)) {
+      mode.append(new Option(plugin.label, id, false, id === fit.active));
+    }
+    mode.addEventListener('change', () => {
+      fit.select(mode.value);
+      status.textContent = `縮小プラグインを「${fit.shrinkers[mode.value].label}」に切り替えました。`;
+    });
 
     const apply = (image) => {
       const t0 = performance.now();
-      const skin = G.plugins.imageFit.fromImage(image, { mode: mode.value });
+      const skin = fit.fromImage(image);
       game.skins.set(target.value, skin);
       const { width, height } = skin.source, cut = skin.trimmed;
       const ms = Math.round(performance.now() - t0);

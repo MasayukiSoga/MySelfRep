@@ -7,6 +7,8 @@ require('../src/engine/physics.js');
 require('../src/plugins/image-fit.js');
 const { World, Body } = globalThis.Game;
 const fit = globalThis.Game.plugins.imageFit;
+// 標準の縮小プラグインで試す（ドット化は後ろのテストで読み込む）
+fit.select('smooth');
 
 // 単色・透明などの画素を並べて画像を作る
 function image(w, h, pixel) {
@@ -16,6 +18,7 @@ function image(w, h, pixel) {
   }
   return { data, width: w, height: h };
 }
+const Game = globalThis.Game;
 const at = (px, w, x, y) => Array.from(px.slice((y * w + x) * 4, (y * w + x) * 4 + 4));
 
 test('プラグイン：use() で組み込まれ、追加・削除・ステップの前後に呼ばれる', () => {
@@ -125,4 +128,69 @@ test('描画は今の拡大率に合わせた実ピクセルの大きさで縮�
   fit.createCanvas = orig;
   assert.deepEqual(made, [[60, 60]], '20×10 の枠 × 拡大率 6 → 60×60 に縮小');
   assert.deepEqual(drawn[0], [-5, -12, 10, 10], '座標系では 10×10、足元から 2 浮かせる');
+});
+
+test('縮小プラグインを切り替えると、同じ画像も新しい方法で縮小し直す（本体はそのまま）', () => {
+  const src = image(8, 8, (x) => (x < 4 ? [255, 0, 0, 255] : [0, 0, 255, 255]));
+  const skin = new fit.Skin(src);
+  fit.select('smooth');
+  const smooth = skin.pixels(3, 3);
+  fit.select('pixel');
+  const pixel = skin.pixels(3, 3);
+  assert.notEqual(smooth, pixel);
+  assert.deepEqual(at(pixel.data, 3, 1, 1), [0, 0, 255, 255], 'くっきりは色を混ぜない');
+  assert.notDeepEqual(at(smooth.data, 3, 1, 1), [0, 0, 255, 255], 'なめらかは境目の色が混ざる');
+  assert.equal(fit.select('ないもの'), false);
+  fit.select('smooth');
+});
+
+test('縮小プラグインを登録すると選べるようになる', () => {
+  const calls = [];
+  fit.register('test-flat', { label: '単色', shrink: (src, sw, sh, dw, dh, tools) => { calls.push(typeof tools.resample); return new Uint8ClampedArray(dw * dh * 4).fill(77); } });
+  const skin = new fit.Skin(image(4, 4, () => [1, 2, 3, 255]), { shrinker: 'test-flat' });
+  assert.deepEqual(at(skin.pixels(2, 2).data, 2, 0, 0), [77, 77, 77, 77]);
+  assert.deepEqual(calls, ['function'], '縮小プラグインには道具（resample など）が渡される');
+  assert.equal(fit.active, 'smooth', '登録しただけでは切り替わらない');
+  delete fit.shrinkers['test-flat'];
+});
+
+test('ドット化：読み込むと標準になり、透明度は2段階、色は16色以内、色を混ぜない', () => {
+  require('../src/plugins/shrink-dot.js');
+  assert.equal(fit.active, 'dot');
+  // なめらかなグラデーションの円（ふちは半透明）
+  const src = image(200, 200, (x, y) => {
+    const d = Math.hypot(x - 100, y - 100);
+    const a = d < 80 ? 255 : d < 90 ? Math.round(255 * (90 - d) / 10) : 0;
+    return [Math.round(x * 1.2), Math.round(y * 1.2), 128, a];
+  });
+  const skin = new fit.Skin(src);
+  const { data, w, h } = skin.pixels(24, 24);
+  const alphas = new Set(), colors = new Set();
+  for (let i = 0; i < data.length; i += 4) {
+    alphas.add(data[i + 3]);
+    if (data[i + 3]) colors.add(`${data[i]},${data[i + 1]},${data[i + 2]}`);
+  }
+  assert.deepEqual([...alphas].sort((a, b) => a - b), [0, 255]);
+  // ふちを暗くした色を含めても、元の16色の2倍まで
+  assert.ok(colors.size <= 32, `色数 ${colors.size}`);
+  assert.deepEqual([w, h], [24, 24]);
+  // 真ん中は不透明、角は透明
+  assert.equal(at(data, w, 12, 12)[3], 255);
+  assert.equal(at(data, w, 0, 0)[3], 0);
+});
+
+test('ドット化：外側のふちは暗く、内側は元の色のまま', () => {
+  const src = image(40, 40, (x, y) => (x >= 10 && x < 30 && y >= 10 && y < 30 ? [200, 200, 200, 255] : [0, 0, 0, 0]));
+  const out = Game.plugins.shrinkDot.shrink(src.data, 40, 40, 8, 8, { resample: fit.resample });
+  const inner = at(out, 8, 4, 4), border = at(out, 8, 2, 4);
+  assert.deepEqual(inner, [200, 200, 200, 255]);
+  assert.ok(border[3] === 255 && border[0] < 200, `ふち ${border}`);
+  assert.equal(at(out, 8, 0, 0)[3], 0);
+});
+
+test('ドット化：メディアンカットは指定した数まで色を減らす', () => {
+  const colors = [];
+  for (let i = 0; i < 1000; i++) colors.push([i % 256, (i * 7) % 256, (i * 13) % 256]);
+  assert.equal(Game.plugins.shrinkDot.medianCut(colors, 16).length, 16);
+  assert.equal(Game.plugins.shrinkDot.medianCut([[1, 2, 3], [1, 2, 3]], 16).length, 1, '同じ色しかなければ割らない');
 });

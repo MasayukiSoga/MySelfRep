@@ -13,7 +13,12 @@
  * - 色は不透明度を掛けてから平均する（premultiplied alpha）。半透明のふちが黒ずまない
  * - 実際に画面に出る大きさ（拡大率も含めた実ピクセル数）で縮小し、大きさごとに覚えておく
  * - とても大きい画像は、最初に一度だけ 512px 以下まで縮めておき、以降はそこから縮小する
- * - mode: 'pixel' にすると、ドット絵向けに最近傍で縮小する（ぼけない）
+ *
+ * 縮小のしかた自体も差し替えられる（縮小プラグイン）
+ *   G.plugins.imageFit.register('名前', { label, shrink(src, sw, sh, dw, dh, tools) })  … 追加
+ *   G.plugins.imageFit.select('名前')   … 切り替え。登録済みのすべての画像がすぐ新しい方法で描き直される
+ * ゲーム本体は「この大きさに縮めて」と頼むだけなので、あとから画質のよい縮小プラグインを足しても本体は変えなくてよい
+ * 標準で入っているもの：smooth（なめらか：面積平均）、pixel（くっきり：最近傍）
  *
  * 縮小の計算（resample など）は DOM を使わない純粋な関数なので、Node のテストでも動く
  */
@@ -126,16 +131,26 @@
     return new OffscreenCanvas(w, h);
   }
 
+  // 縮小プラグインの登録先。shrink は RGBA の画素を dw × dh に縮めて返す
+  const shrinkers = {
+    smooth: { label: 'なめらか（面積平均）', shrink: (src, sw, sh, dw, dh) => resample(src, sw, sh, dw, dh, 'smooth') },
+    pixel: { label: 'くっきり（最近傍）', shrink: (src, sw, sh, dw, dh) => resample(src, sw, sh, dw, dh, 'pixel') },
+  };
+  // 縮小プラグインが使える道具
+  const tools = { resample, alphaBounds, fitSize };
+
   // 縮小済みの見た目。元の画像は一度だけ読み、表示する大きさごとに縮小結果を覚えておく
+  // shrinker を指定しなければ、そのとき選ばれている縮小プラグイン（imageFit.active）を使う
   class Skin {
-    constructor({ data, width, height }, { mode = 'smooth', trim = true } = {}) {
-      this.mode = mode;
+    constructor({ data, width, height }, { shrinker = null, trim = true } = {}) {
+      this.shrinker = shrinker;
       this.source = { width, height };
       this.trimmed = (trim && alphaBounds(data, width, height)) || { x: 0, y: 0, w: width, h: height };
       let px = crop(data, width, this.trimmed), w = this.trimmed.w, h = this.trimmed.h;
+      // 下ごしらえはどの縮小プラグインでも共通（512px 以下まで面積平均で縮める）
       if (Math.max(w, h) > BASE_MAX) {
         const f = fitSize(w, h, BASE_MAX, BASE_MAX);
-        px = resample(px, w, h, f.w, f.h, mode);
+        px = resample(px, w, h, f.w, f.h);
         w = f.w;
         h = f.h;
       }
@@ -145,13 +160,15 @@
 
     get aspect() { return this.base.w / this.base.h; }
 
-    // maxW × maxH（実ピクセル）に収まるよう縮小した画素
+    // maxW × maxH（実ピクセル）に収まるよう縮小した画素。縮小プラグインと大きさごとに覚えておく
     pixels(maxW, maxH) {
       const { w, h } = fitSize(this.base.w, this.base.h, maxW, maxH);
-      const key = `${w}x${h}`;
+      const name = this.shrinker ?? imageFit.active;
+      const plugin = shrinkers[name] ?? shrinkers.smooth;
+      const key = `${name}:${w}x${h}`;
       let hit = this.cache.get(key);
       if (!hit) {
-        hit = { w, h, data: resample(this.base.data, this.base.w, this.base.h, w, h, this.mode), canvas: null };
+        hit = { w, h, data: plugin.shrink(this.base.data, this.base.w, this.base.h, w, h, tools), canvas: null };
         this.cache.set(key, hit);
         if (this.cache.size > CACHE_MAX) this.cache.delete(this.cache.keys().next().value);
       }
@@ -216,6 +233,20 @@
       const cx = c.getContext('2d');
       cx.drawImage(image, 0, 0);
       return new Skin(cx.getImageData(0, 0, w, h), options);
+    },
+    // 今使っている縮小プラグインの名前
+    active: 'smooth',
+    shrinkers,
+    // 縮小プラグインを追加する。select: true ならすぐにそれを使う
+    register(name, plugin, { select = false } = {}) {
+      shrinkers[name] = plugin;
+      if (select) imageFit.active = name;
+      return imageFit;
+    },
+    select(name) {
+      if (!shrinkers[name]) return false;
+      imageFit.active = name;
+      return true;
     },
     Skin,
     createCanvas,
