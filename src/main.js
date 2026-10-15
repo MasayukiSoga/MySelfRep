@@ -1,11 +1,11 @@
 /*
- * 起動とモード切り替え
- * 各モードのシーンは保持しておき、切り替えて戻ると続きから遊べる（R キーでやり直し）
+ * 起動とスタイル切り替え
+ * フィールドはひとつだけ。ボタンや 1・2・3 キーで、その場の戦い方（RPG・ACT・STG）を切り替える
  */
 (function (G) {
   'use strict';
 
-  const ORDER = ['stg', 'act', 'rpg'];
+  const ORDER = ['rpg', 'act', 'stg'];
   const SCALE = 2;
 
   function boot(saved) {
@@ -16,32 +16,33 @@
 
     const input = new G.Input();
     input.attachKeyboard(window);
-    // 主人公の成長は3モードで共通
+    // 主人公の成長はスタイルを切り替えても共通
     const game = { input, party: new G.Party() };
-    const scenes = {};
-    let current = ORDER.includes(saved?.mode) ? saved.mode : 'stg';
+    let scene = new G.FieldScene(game, ORDER.includes(saved?.style) ? saved.style : 'rpg');
     let debug = false;
     let started = false;
 
-    const tabs = [...document.querySelectorAll('[data-mode]')];
+    const tabs = [...document.querySelectorAll('.modes [data-mode]')];
     const debugButton = document.getElementById('toggle-debug');
 
-    function select(id) {
-      // ゲームオーバーのまま別のモードに移ったら、復活させてそのモードを作り直す
-      if (game.party.dead) {
-        game.party.revive();
-        for (const k of Object.keys(scenes)) if (scenes[k].state === 'over') delete scenes[k];
-      }
-      current = id;
-      scenes[id] ??= G.modes[id].create(game);
-      input.releaseAll();
+    function refresh() {
+      const id = scene.style.id;
       document.documentElement.dataset.mode = id;
       for (const t of tabs) t.setAttribute('aria-selected', String(t.dataset.mode === id));
       for (const el of document.querySelectorAll('[data-for]')) el.hidden = el.dataset.for !== id;
     }
 
+    // バトル中・会話中は切り替えられない（そのときはボタンの表示も変わらない）
+    function select(id) {
+      scene.setStyle(id);
+      input.releaseAll();
+      refresh();
+    }
+
     function restart() {
-      scenes[current] = G.modes[current].create(game);
+      if (game.party.dead) game.party.revive();
+      scene = new G.FieldScene(game, scene.style.id);
+      refresh();
     }
 
     function setDebug(on) {
@@ -77,20 +78,17 @@
 
     setupTouch(input, start);
 
-    window.claude?.hot?.snapshot?.(() => ({ mode: current }));
+    window.claude?.hot?.snapshot?.(() => ({ style: scene.style.id }));
 
-    select(current);
+    refresh();
 
     const loop = new G.Loop(
       (dt) => {
         if (!started) return;
-        const scene = scenes[current];
         scene.update(dt);
-        if (scene.restart) restart();
         input.endStep();
       },
       () => {
-        const scene = scenes[current];
         ctx.setTransform(SCALE, 0, 0, SCALE, 0, 0);
         ctx.imageSmoothingEnabled = false;
         scene.draw(ctx);
@@ -105,7 +103,7 @@
     loop.start();
   }
 
-  // 画面上の十字キーと A・B ボタン（スマホ用）
+  // 画面上の十字キーと A・B・C ボタン（スマホ用）
   function setupTouch(input, start) {
     const pad = document.getElementById('dpad');
     if (!pad) return;

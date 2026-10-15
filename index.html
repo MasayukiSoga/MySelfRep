@@ -197,6 +197,7 @@
   .controls dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; }
   .controls dt { white-space: nowrap; }
   .controls dd { margin: 0; color: var(--muted); }
+  .controls dl + dl { margin-top: 8px; }
   .controls p { margin: 10px 0 0; font-size: 13px; color: var(--muted); }
 
   .table-wrap { overflow-x: auto; }
@@ -219,13 +220,13 @@
 <div class="app">
   <header class="masthead">
     <h1>トリモード・<span>アーケード</span></h1>
-    <p class="lede">ひとりの勇者が、3つの戦い方で同じモンスターと戦います。レベル・HP・MP・ゴールドは全モード共通で、どこで倒しても経験値がたまります。動かしているのはひとつの簡易物理エンジンです。</p>
+    <p class="lede">ひとつのフィールドを、ボタンひとつで RPG・ACT・STG の戦い方に切り替えて冒険します。場所も勇者の成長もそのままで、変わるのは戦い方だけです。動かしているのはひとつの簡易物理エンジンです。</p>
   </header>
 
   <nav class="modes" role="tablist" aria-label="モード">
-    <button type="button" role="tab" data-mode="stg" aria-selected="true"><span class="key">1</span><strong>STG</strong><small>空中で魔法バトル</small></button>
-    <button type="button" role="tab" data-mode="act" aria-selected="false"><span class="key">2</span><strong>ACT</strong><small>剣と魔法のアクション</small></button>
-    <button type="button" role="tab" data-mode="rpg" aria-selected="false"><span class="key">3</span><strong>RPG</strong><small>エンカウントバトル</small></button>
+    <button type="button" role="tab" data-mode="rpg" aria-selected="true"><span class="key">1</span><strong>RPG</strong><small>エンカウントでコマンドバトル</small></button>
+    <button type="button" role="tab" data-mode="act" aria-selected="false"><span class="key">2</span><strong>ACT</strong><small>その場で剣と魔法</small></button>
+    <button type="button" role="tab" data-mode="stg" aria-selected="false"><span class="key">3</span><strong>STG</strong><small>その場で魔法を連射</small></button>
   </nav>
 
   <div class="stage"><canvas id="screen" width="960" height="640" tabindex="0" aria-label="ゲーム画面"></canvas></div>
@@ -248,45 +249,42 @@
   <section class="info">
     <div class="card controls">
       <h2>操作</h2>
-      <dl data-for="stg">
-        <dt><kbd>←↑↓→</kbd></dt><dd>8方向に移動</dd>
-        <dt><kbd>Z</kbd> 長押し</dt><dd>魔法の弾（MP を使わない）</dd>
-        <dt><kbd>C</kbd> / <kbd>X</kbd></dt><dd>ファイア（MP 3、敵を貫通）</dd>
+      <dl>
+        <dt><kbd>←↑↓→</kbd></dt><dd>移動（画面の向きのまま）</dd>
+        <dt><kbd>X</kbd> / <kbd>Space</kbd></dt><dd>ジャンプ。敵や弾を飛び越えられる</dd>
+        <dt><kbd>Z</kbd></dt><dd>人や宝箱の前なら、話す・開ける</dd>
+      </dl>
+      <dl data-for="rpg">
+        <dt>RPG</dt><dd>歩くとモンスターに出会い、バトル画面へ。<kbd>↑↓</kbd>で選んで<kbd>Z</kbd>で決定、<kbd>X</kbd>で戻る</dd>
       </dl>
       <dl data-for="act" hidden>
-        <dt><kbd>←→</kbd></dt><dd>移動</dd>
-        <dt><kbd>X</kbd> / <kbd>Space</kbd></dt><dd>ジャンプ（長押しで高く）</dd>
-        <dt><kbd>↓</kbd>＋<kbd>X</kbd></dt><dd>白い足場から飛び降りる</dd>
-        <dt><kbd>Z</kbd></dt><dd>剣で攻撃（敵は踏んでも倒せる）</dd>
-        <dt><kbd>C</kbd></dt><dd>ファイア（MP 3）</dd>
+        <dt>ACT</dt><dd>フィールドにモンスターが現れる。<kbd>Z</kbd>で剣、<kbd>C</kbd>でファイア（MP 3）</dd>
       </dl>
-      <dl data-for="rpg" hidden>
-        <dt><kbd>←↑↓→</kbd></dt><dd>移動。歩くとモンスターに出会う</dd>
-        <dt><kbd>Z</kbd></dt><dd>話す・宝箱を開ける</dd>
-        <dt>バトル中</dt><dd><kbd>↑↓</kbd>で選んで<kbd>Z</kbd>で決定、<kbd>X</kbd>で戻る</dd>
+      <dl data-for="stg" hidden>
+        <dt>STG</dt><dd>フィールドにモンスターが現れ、弾を撃ってくる。<kbd>Z</kbd>長押しで魔法の弾（向きを固定したまま動ける）、<kbd>C</kbd>で貫通するファイア</dd>
       </dl>
-      <p>MP はアクションと空中戦では少しずつ回復し、RPG では宿屋で回復します。WASD でも移動できます。スマホでは画面下のボタンで操作します。</p>
+      <p>ACT と STG では MP が少しずつ回復します。南の宿屋で休むと全回復します。WASD でも移動できます。スマホでは画面下のボタンで操作します。</p>
     </div>
 
     <div class="card">
-      <h2>物理エンジンの設定</h2>
+      <h2>スタイルごとの違い</h2>
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th></th><th class="stg">STG</th><th class="act">ACT</th><th class="rpg">RPG</th></tr>
+            <tr><th></th><th class="rpg">RPG</th><th class="act">ACT</th><th class="stg">STG</th></tr>
           </thead>
           <tbody>
-            <tr><th>重力</th><td class="stg">なし</td><td class="act">下向き 1400 px/s²</td><td class="rpg">なし</td></tr>
-            <tr><th>高さ z の重力</th><td class="stg">なし</td><td class="act">なし</td><td class="rpg">800 px/s²</td></tr>
-            <tr><th>タイルの押し戻し</th><td class="stg">使わない</td><td class="act">使う</td><td class="rpg">使う</td></tr>
-            <tr><th>一方通行の床</th><td class="stg">－</td><td class="act">あり</td><td class="rpg">－</td></tr>
-            <tr><th>描画</th><td class="stg">そのまま</td><td class="act">横スクロール</td><td class="rpg">斜めに変換</td></tr>
-            <tr><th>戦い方</th><td class="stg">フィールドで魔法</td><td class="act">フィールドで剣と魔法</td><td class="rpg">バトル画面でコマンド</td></tr>
-            <tr class="shared"><th>共通</th><td colspan="3">勇者の成長、モンスターと魔法のデータ、ダメージ計算、見た目、重なり検出と当たった瞬間のイベント</td></tr>
+            <tr><th>敵の出かた</th><td class="rpg">ランダムエンカウント</td><td class="act">フィールドにシンボル</td><td class="stg">フィールドにシンボル</td></tr>
+            <tr><th>戦う場所</th><td class="rpg">バトル画面</td><td class="act">フィールド</td><td class="stg">フィールド</td></tr>
+            <tr><th>Z ボタン</th><td class="rpg">話す・調べる</td><td class="act">剣</td><td class="stg">魔法の弾（連射）</td></tr>
+            <tr><th>C ボタン</th><td class="rpg">－</td><td class="act">ファイア</td><td class="stg">ファイア（貫通）</td></tr>
+            <tr><th>敵の弾</th><td class="rpg">－</td><td class="act">ゴブリンの投石だけ</td><td class="stg">多い</td></tr>
+            <tr><th>物理エンジン</th><td class="rpg">歩く・壁で止まる</td><td class="act">剣の判定・敵との接触</td><td class="stg">たくさんの弾の判定</td></tr>
+            <tr class="shared"><th>共通</th><td colspan="3">フィールド、勇者の位置と成長、モンスターと魔法のデータ、ダメージ計算、見た目、物理の設定</td></tr>
           </tbody>
         </table>
       </div>
-      <p class="note">RPG のバトル画面は物理エンジンを使わないコマンド式ですが、ダメージ計算と経験値は STG・ACT と同じ関数を使っています。</p>
+      <p class="note">切り替えても物理の設定は同じです。変わるのは攻撃ボタンの意味と敵の出かただけなので、バトル中と会話中以外ならいつでも切り替えられます。</p>
     </div>
   </section>
 </div>
@@ -295,10 +293,9 @@
 <script src="src/engine/core.js"></script>
 <script src="src/game/data.js"></script>
 <script src="src/game/sprites.js"></script>
-<script src="src/modes/stg.js"></script>
-<script src="src/modes/act.js"></script>
 <script src="src/modes/battle.js"></script>
-<script src="src/modes/rpg.js"></script>
+<script src="src/modes/styles.js"></script>
+<script src="src/modes/field.js"></script>
 <script src="src/main.js"></script>
 <!-- fragment:end -->
 </body>
