@@ -1,5 +1,5 @@
 /*
- * ACT：横スクロールアクション
+ * ACT：横スクロールのフィールドで、現れたモンスターと剣と魔法で戦う
  * 物理の設定：下向きの重力あり、タイルとの押し戻しあり、一方通行の床あり
  */
 (function (G) {
@@ -7,6 +7,7 @@
 
   const { Body, Layer, Scene, TileMap, W, H } = G;
   const { clamp, approach, rand } = G.util;
+  const { SPELLS } = G.data;
 
   const TS = 16;
 
@@ -43,9 +44,11 @@
     [[18, 13], [19, 13], [36, 12], [37, 12], [38, 12], [42, 9], [43, 9], [49, 11],
       [24, 15], [56, 13], [57, 13], [58, 13], [63, 10], [64, 10], [65, 10], [77, 15],
       [86, 13], [87, 13], [88, 13], [99, 11]].forEach(([x, y]) => put('coin', x, y));
-    [[19, 17], [35, 17], [42, 17], [58, 17], [66, 17], [84, 17], [90, 17]].forEach(([x, y]) => put('walker', x, y));
+    [[19, 17], [35, 17], [58, 17], [84, 17]].forEach(([x, y]) => put('slime', x, y));
+    [[40, 11], [64, 8], [92, 10]].forEach(([x, y]) => put('bat', x, y));
+    [[66, 17], [90, 17], [104, 17]].forEach(([x, y]) => put('goblin', x, y));
     [[44, 17], [45, 17], [73, 17]].forEach(([x, y]) => put('spike', x, y));
-    put('goal', 106, 17);
+    put('goal', 108, 17);
 
     return { rows: g.map((r) => r.join('')), things };
   }
@@ -53,7 +56,6 @@
   class Hero {
     constructor(scene, x, y) {
       this.scene = scene;
-      this.hp = 3;
       this.facing = 1;
       this.inv = 0;
       this.stun = 0;
@@ -61,16 +63,17 @@
       this.buffer = 0;
       this.drop = 0;
       this.attackT = -1;
+      this.castT = 0;
       this.hitList = new Set();
       this.safe = { x, y };
       this.body = new Body({
-        x, y, w: 10, h: 14, owner: this,
+        x, y, w: 10, h: 16, owner: this,
         layer: Layer.PLAYER, mask: Layer.ENEMY | Layer.ENEMY_ATTACK | Layer.ITEM,
         onEnter: (o) => this.touch(o),
       });
       // 剣の攻撃判定。振っている途中の数フレームだけ有効にする
       this.sword = new Body({
-        w: 22, h: 16, gravityScale: 0, collideTiles: false, enabled: false, owner: this,
+        w: 22, h: 18, gravityScale: 0, collideTiles: false, enabled: false, owner: this,
         layer: Layer.PLAYER_ATTACK, mask: Layer.ENEMY,
         onEnter: (o) => this.slash(o),
       });
@@ -78,12 +81,12 @@
     }
 
     touch(o) {
-      const b = this.body;
+      const b = this.body, s = this.scene;
       if (o.layer & Layer.ITEM) { o.owner.collect(this); return; }
       // 落ちながら敵の上から当たったら踏みつけ
       if ((o.layer & Layer.ENEMY) && b.vy > 0 && b.bottom - o.top < 8) {
-        o.owner.damage(9, 0);
-        b.vy = this.scene.input.down('b') ? -380 : -260;
+        o.owner.damage(s.party.physicalDamage(o.owner.kind), 0);
+        b.vy = s.input.down('b') ? -380 : -260;
       }
     }
 
@@ -91,34 +94,36 @@
       // 1回の振りで同じ敵に2回当てない
       if (this.hitList.has(o)) return;
       this.hitList.add(o);
-      o.owner.damage(1, this.facing);
+      o.owner.damage(this.scene.party.physicalDamage(o.owner.kind), this.facing);
       this.scene.freeze = 0.05;
       this.scene.particles.burst(o.x, o.y, { count: 8, speed: 140, color: '#fff6a8', life: 0.25 });
     }
 
-    hurt(fromX) {
-      if (this.inv > 0 || this.dead) return;
-      const b = this.body;
-      this.hp--;
+    hurt(dmg, fromX) {
+      const s = this.scene, b = this.body, party = s.party;
+      if (this.inv > 0 || this.dead) return false;
+      party.hp = Math.max(0, party.hp - dmg);
+      s.popup(b.x, b.top, String(dmg), '#ff8fa0');
       this.inv = 1.2;
       this.stun = 0.25;
       b.vx = b.x < fromX ? -160 : 160;
       b.vy = -220;
-      this.scene.shake = 0.2;
-      if (this.hp <= 0) this.die();
-    }
-
-    die() {
-      this.scene.particles.burst(this.body.x, this.body.y, { count: 30, speed: 160, color: '#ffb347', life: 0.8 });
-      this.scene.kill(this);
-      this.scene.state = 'over';
+      s.shake = 0.2;
+      if (party.dead) {
+        s.particles.burst(b.x, b.y, { count: 30, speed: 160, color: '#ffb347', life: 0.8 });
+        s.kill(this);
+        s.state = 'over';
+      }
+      return true;
     }
 
     update(dt) {
-      const b = this.body, input = this.scene.input, map = this.scene.world.map;
+      const b = this.body, s = this.scene, input = s.input, map = s.world.map;
       this.inv -= dt;
       this.stun -= dt;
       this.drop -= dt;
+      this.castT -= dt;
+      s.party.regenMp(dt);
 
       const ax = input.axis().x;
       if (this.stun <= 0) {
@@ -136,7 +141,7 @@
       } else if (this.buffer > 0 && this.coyote > 0) {
         b.vy = -420;
         this.buffer = this.coyote = 0;
-        this.scene.particles.burst(b.x, b.bottom, { count: 5, speed: 40, color: '#e9e6ff', life: 0.3 });
+        s.particles.burst(b.x, b.bottom, { count: 5, speed: 40, color: '#e9e6ff', life: 0.3 });
       }
       // ボタンを早く離すと低いジャンプになる
       if (!input.down('b') && b.vy < -160) b.vy = -160;
@@ -150,18 +155,28 @@
         this.attackT += dt;
         this.sword.enabled = this.attackT > 0.04 && this.attackT < 0.16;
         this.sword.x = b.x + this.facing * 15;
-        this.sword.y = b.y - 1;
+        this.sword.y = b.y - 2;
         if (this.attackT > 0.26) this.attackT = -1;
       }
 
+      if (input.pressed('c') && this.castT <= 0) {
+        if (s.party.cast(SPELLS.fire)) {
+          this.castT = 0.3;
+          s.add(new Fire(s, b.x + this.facing * 10, b.y - 2, this.facing));
+        } else s.popup(b.x, b.top - 4, 'MPがたりない', '#8fd3ff');
+      }
+
       // 敵やトゲに重なっている間はダメージを受ける
-      for (const o of b.contacts) if (o.layer & (Layer.ENEMY | Layer.ENEMY_ATTACK)) this.hurt(o.x);
+      for (const o of b.contacts) {
+        if (o.layer & (Layer.ENEMY | Layer.ENEMY_ATTACK)) this.hurt(o.owner.damageTo(s.party), o.x);
+      }
 
       if (b.onGround && this.inv <= 0 && map.isGroundAt(b.left, b.bottom + 1) && map.isGroundAt(b.right, b.bottom + 1)) {
         this.safe = { x: b.x, y: b.y };
       }
       if (b.top > map.height + 40) {
-        this.hurt(b.x);
+        this.inv = 0;
+        this.hurt(Math.ceil(s.party.maxHp * 0.15), b.x);
         if (!this.dead) {
           b.x = this.safe.x;
           b.y = this.safe.y;
@@ -171,26 +186,21 @@
     }
 
     draw(ctx) {
-      const b = this.body, f = this.facing;
+      const b = this.body, f = this.facing, s = this.scene;
       if (this.inv > 0 && Math.floor(this.inv * 15) % 2) return;
-      const x = Math.round(b.x), y = Math.round(b.y);
-      ctx.fillStyle = '#3b6fd8';
-      ctx.fillRect(x - 5, y - 1, 10, 6);
-      ctx.fillStyle = '#ffd6a5';
-      ctx.fillRect(x - 4, y - 7, 8, 6);
-      ctx.fillStyle = '#c0392b';
-      ctx.fillRect(x - 5, y - 8, 10, 3);
-      ctx.fillStyle = '#222';
-      ctx.fillRect(x + f * 2 - 1, y - 5, 2, 2);
-      const step = b.onGround && Math.abs(b.vx) > 10 ? Math.floor(this.scene.time * 12) % 2 : 0;
-      ctx.fillStyle = '#5a3d2b';
-      ctx.fillRect(x - 4, y + 5, 3, 2 - step);
-      ctx.fillRect(x + 1, y + 5, 3, 1 + step);
+      const step = b.onGround && Math.abs(b.vx) > 10 ? Math.floor(s.time * 12) % 2 : 0;
+      G.sprites.hero(ctx, b.x, b.bottom, { facing: f, step });
+      if (this.castT > 0.15) {
+        ctx.fillStyle = 'rgba(255,180,70,0.5)';
+        ctx.beginPath();
+        ctx.arc(b.x + f * 8, b.y - 3, 5, 0, Math.PI * 2);
+        ctx.fill();
+      }
       if (this.attackT >= 0 && this.attackT < 0.2) {
         const p = clamp(this.attackT / 0.16, 0, 1);
         const a = -Math.PI / 2 + p * Math.PI * 0.9;
         ctx.save();
-        ctx.translate(x + f * 3, y);
+        ctx.translate(Math.round(b.x) + f * 3, Math.round(b.y) - 2);
         ctx.scale(f, 1);
         ctx.strokeStyle = '#e8f1ff';
         ctx.lineWidth = 3;
@@ -210,45 +220,118 @@
     }
   }
 
-  class Walker {
-    constructor(scene, x, y) {
+  class Fire {
+    constructor(scene, x, y, dir) {
       this.scene = scene;
-      this.hp = 2;
+      this.body = new Body({
+        x, y, r: 6, vx: dir * 280, gravityScale: 0, owner: this,
+        layer: Layer.PLAYER_ATTACK, mask: Layer.ENEMY,
+        onEnter: (o) => {
+          o.owner.damage(scene.party.spellDamage(o.owner.kind), dir);
+          this.explode();
+        },
+      });
+    }
+    explode() {
+      this.scene.particles.burst(this.body.x, this.body.y, { count: 12, speed: 120, color: '#ffb347', life: 0.35 });
+      this.scene.kill(this);
+    }
+    update() {
+      const b = this.body, s = this.scene;
+      // 壁に当たったら消える（タイルとの衝突は物理エンジンが教えてくれる）
+      if (b.wall) this.explode();
+      if (b.x < s.camX - 20 || b.x > s.camX + W + 20) s.kill(this);
+    }
+    draw(ctx) { G.sprites.fireball(ctx, this.body.x, this.body.y, this.scene.time, 5); }
+  }
+
+  class Rock {
+    constructor(scene, x, y, vx) {
+      this.scene = scene;
+      this.body = new Body({
+        x, y, r: 4, vx, vy: -260, owner: this,
+        layer: Layer.ENEMY_ATTACK, mask: Layer.PLAYER,
+        onEnter: (o) => { if (o.owner.hurt(this.damageTo(scene.party), this.body.x)) scene.kill(this); },
+      });
+    }
+    damageTo(party) { return party.damageFrom('goblin', 0.8); }
+    update() {
+      const b = this.body;
+      if (b.onGround || b.wall || b.top > this.scene.world.map.height) this.scene.kill(this);
+    }
+    draw(ctx) { G.sprites.rock(ctx, this.body.x, this.body.y); }
+  }
+
+  // モンスター。種類ごとに動き方だけが違い、強さは共通データから読む
+  class Monster {
+    constructor(scene, kind, x, y) {
+      this.scene = scene;
+      this.kind = kind;
+      this.hp = G.data.MONSTERS[kind].hp;
       this.dir = -1;
       this.kb = 0;
       this.flash = 0;
-      this.body = new Body({ x, y, w: 12, h: 12, owner: this, layer: Layer.ENEMY });
+      this.t = rand(0, 3);
+      this.home = { x, y };
+      this.throwT = rand(1, 2);
+      const flying = kind === 'bat';
+      const size = { slime: [14, 10], bat: [14, 12], goblin: [12, 18] }[kind];
+      this.body = new Body({
+        x, y: flying ? y : y + TS / 2 - size[1] / 2, w: size[0], h: size[1], owner: this, layer: Layer.ENEMY,
+        gravityScale: flying ? 0 : 1, collideTiles: !flying,
+      });
     }
+    damageTo(party) { return party.damageFrom(this.kind); }
     update(dt) {
-      const b = this.body, map = this.scene.world.map;
+      const b = this.body, s = this.scene, map = s.world.map, hero = s.hero.body;
+      this.t += dt;
       this.flash -= dt;
       this.kb -= dt;
-      if (b.wall === this.dir) this.dir = -this.dir;
-      if (b.onGround && !map.isGroundAt(b.x + this.dir * (b.hw + 2), b.bottom + 2)) this.dir = -this.dir;
-      if (this.kb <= 0) b.vx = this.dir * 40;
-      if (b.top > map.height) this.scene.kill(this);
+      const dx = hero.x - b.x, dy = hero.y - b.y;
+      if (this.kind === 'bat') {
+        // 主人公が近づくと、ゆっくり追いかけてくる
+        const near = Math.abs(dx) < 150 && Math.abs(dy) < 120 && !s.hero.dead;
+        const tx = near ? hero.x : this.home.x + Math.sin(this.t) * 30;
+        const ty = (near ? hero.y - 6 : this.home.y) + Math.sin(this.t * 4) * 10;
+        if (this.kb <= 0) {
+          b.vx = clamp((tx - b.x) * 2, -60, 60);
+          b.vy = clamp((ty - b.y) * 2, -60, 60);
+        }
+        this.dir = dx < 0 ? -1 : 1;
+      } else {
+        if (b.wall === this.dir) this.dir = -this.dir;
+        if (b.onGround && !map.isGroundAt(b.x + this.dir * (b.hw + 2), b.bottom + 2)) this.dir = -this.dir;
+        const speed = this.kind === 'goblin' ? 25 : 38;
+        if (this.kb <= 0) b.vx = this.dir * speed;
+        if (this.kind === 'goblin' && Math.abs(dx) < 170 && Math.abs(dy) < 80 && !s.hero.dead) {
+          this.throwT -= dt;
+          if (this.throwT <= 0) {
+            this.throwT = 2.2;
+            this.dir = dx < 0 ? -1 : 1;
+            s.add(new Rock(s, b.x, b.top, clamp(dx * 1.1, -150, 150)));
+          }
+        }
+      }
+      if (b.top > map.height) s.kill(this);
     }
     damage(n, from) {
-      const b = this.body;
+      const s = this.scene, b = this.body;
       this.hp -= n;
       this.flash = 0.1;
+      s.popup(b.x, b.top, String(n));
       b.vx = from * 140;
-      b.vy = -140;
+      if (this.kind !== 'bat') b.vy = -140;
       this.kb = 0.3;
       if (this.hp > 0) return;
-      this.scene.score += 100;
-      this.scene.particles.burst(b.x, b.y, { count: 14, speed: 120, color: '#9b8cff', gravity: 300 });
-      this.scene.kill(this);
+      s.reward(this.kind, b.x, b.top - 12);
+      s.particles.burst(b.x, b.y, { count: 14, speed: 120, color: '#e9e6ff', gravity: 300 });
+      s.kill(this);
     }
     draw(ctx) {
-      const b = this.body, x = Math.round(b.x), y = Math.round(b.y);
-      const squash = Math.floor(this.scene.time * 6) % 2;
-      ctx.fillStyle = this.flash > 0 ? '#fff' : '#9b8cff';
-      ctx.fillRect(x - 6, y - 5 + squash, 12, 11 - squash);
-      ctx.fillStyle = '#fff';
-      ctx.fillRect(x + this.dir * 2 - 2, y - 2, 3, 3);
-      ctx.fillStyle = '#1b1640';
-      ctx.fillRect(x + this.dir * 3 - 1, y - 1, 1, 2);
+      const b = this.body;
+      G.sprites.monster(ctx, this.kind, b.x, this.kind === 'bat' ? b.y + 10 : b.bottom, {
+        t: this.t, flash: this.flash > 0, facing: this.dir,
+      });
     }
   }
 
@@ -259,8 +342,7 @@
     }
     update() {}
     collect() {
-      this.scene.score += 10;
-      this.scene.coins++;
+      this.scene.party.gold += 1;
       this.scene.particles.burst(this.body.x, this.body.y, { count: 6, speed: 60, color: '#ffd84d', life: 0.3 });
       this.scene.kill(this);
     }
@@ -277,6 +359,7 @@
       this.scene = scene;
       this.body = new Body({ x, y: y + 4, w: 14, h: 8, gravityScale: 0, collideTiles: false, owner: this, layer: Layer.ENEMY_ATTACK });
     }
+    damageTo() { return 4; }
     update() {}
     draw(ctx) {
       const b = this.body;
@@ -298,10 +381,11 @@
     }
     update() {}
     collect() {
-      if (this.scene.state !== 'play') return;
-      this.scene.state = 'clear';
-      this.scene.score += this.scene.hero.hp * 500;
-      this.scene.particles.burst(this.body.x, this.body.top, { count: 40, speed: 180, color: '#7bd389', life: 1, gravity: 200 });
+      const s = this.scene;
+      if (s.state !== 'play') return;
+      s.state = 'clear';
+      s.party.gold += 20;
+      s.particles.burst(this.body.x, this.body.top, { count: 40, speed: 180, color: '#7bd389', life: 1, gravity: 200 });
     }
     draw(ctx) {
       const b = this.body;
@@ -323,26 +407,29 @@
       const map = new TileMap(level.rows, TS, { solid: ['#', '='], oneWay: ['-'], edge: '#', bottom: '.' });
       super(game, { gravity: 1400, maxFall: 520, map });
       this.shake = 0;
-      this.coins = 0;
       this.camX = 0;
       const at = (t) => [t.x * TS + TS / 2, t.y * TS + TS / 2];
       for (const t of level.things) {
         const [x, y] = at(t);
-        if (t.type === 'player') this.hero = this.add(new Hero(this, x, y + 1));
+        if (t.type === 'player') this.hero = this.add(new Hero(this, x, y));
         if (t.type === 'coin') this.add(new Coin(this, x, y));
-        if (t.type === 'walker') this.add(new Walker(this, x, y + 2));
+        if (t.type in G.data.MONSTERS) this.add(new Monster(this, t.type, x, y));
         if (t.type === 'spike') this.add(new Spike(this, x, y));
         if (t.type === 'goal') this.add(new Goal(this, x, y));
       }
     }
 
-    project(x, y) { return { x: x - this.camX, y }; }
+    project(x, y, z = 0) { return { x: x - this.camX, y: y - z }; }
 
     update(dt) {
       this.shake = Math.max(0, this.shake - dt);
-      if (this.state !== 'play' && this.input.pressed('a')) this.restart = true;
+      if (this.state !== 'play' && this.input.pressed('a')) {
+        if (this.state === 'over') this.party.revive();
+        this.restart = true;
+      }
       if (this.state === 'clear') {
-        this.particles.update(dt);
+        this.time += dt;
+        this.updateEffects(dt);
         return;
       }
       this.stepWorld(dt);
@@ -399,21 +486,22 @@
       }
       for (const e of this.entities) e.draw(ctx);
       this.particles.draw(ctx, (x, y) => ({ x, y }));
+      G.draw.popups(ctx, this.popups, (x, y, z) => ({ x, y: y - z }));
       ctx.restore();
 
       const D = G.draw;
-      D.hearts(ctx, 10, 9, Math.max(0, this.hero.hp), 3);
-      D.text(ctx, `コイン ${this.coins}`, 60, 8, { size: 12, color: '#ffd84d' });
-      D.text(ctx, `SCORE ${this.score}`, W - 10, 8, { size: 12, align: 'right' });
-      if (this.state === 'over') D.banner(ctx, 'GAME OVER', 'Z でもう一度', '#ff5d73');
-      if (this.state === 'clear') D.banner(ctx, 'STAGE CLEAR', `スコア ${this.score}　Z でもう一度`, '#7bd389');
+      D.status(ctx, this.party);
+      D.text(ctx, `${this.party.gold} G`, W - 10, 6, { size: 12, align: 'right', color: '#ffd84d' });
+      D.levelUp(ctx, this);
+      if (this.state === 'over') D.banner(ctx, 'GAME OVER', 'Z でもう一度（ゴールドが半分になります）', '#ff5d73');
+      if (this.state === 'clear') D.banner(ctx, 'STAGE CLEAR', 'Z でもう一度遊ぶ（レベルはそのまま）', '#7bd389');
     }
   }
 
   G.modes.act = {
     id: 'act',
     label: 'ACT',
-    name: '横スクロールアクション',
+    name: 'フィールドアクション',
     create: (game) => new ActScene(game),
   };
 })(globalThis.Game = globalThis.Game || {});

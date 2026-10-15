@@ -16,7 +16,8 @@
 
     const input = new G.Input();
     input.attachKeyboard(window);
-    const game = { input };
+    // 主人公の成長は3モードで共通
+    const game = { input, party: new G.Party() };
     const scenes = {};
     let current = ORDER.includes(saved?.mode) ? saved.mode : 'stg';
     let debug = false;
@@ -26,6 +27,11 @@
     const debugButton = document.getElementById('toggle-debug');
 
     function select(id) {
+      // ゲームオーバーのまま別のモードに移ったら、復活させてそのモードを作り直す
+      if (game.party.dead) {
+        game.party.revive();
+        for (const k of Object.keys(scenes)) if (scenes[k].state === 'over') delete scenes[k];
+      }
       current = id;
       scenes[id] ??= G.modes[id].create(game);
       input.releaseAll();
@@ -88,7 +94,7 @@
         ctx.setTransform(SCALE, 0, 0, SCALE, 0, 0);
         ctx.imageSmoothingEnabled = false;
         scene.draw(ctx);
-        if (debug) G.draw.bodies(ctx, scene);
+        if (debug && !scene.battle) G.draw.bodies(ctx, scene);
         if (!started) {
           ctx.fillStyle = 'rgba(10,8,30,0.55)';
           ctx.fillRect(0, 0, G.W, G.H);

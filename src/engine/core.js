@@ -26,6 +26,7 @@
     ArrowDown: 'down', KeyS: 'down',
     KeyZ: 'a', KeyJ: 'a',
     KeyX: 'b', KeyK: 'b', Space: 'b',
+    KeyC: 'c', KeyL: 'c',
   };
 
   class Input {
@@ -105,6 +106,8 @@
     constructor(game, worldOptions) {
       this.game = game;
       this.input = game.input;
+      this.party = game.party;
+      this.popups = [];
       this.world = new G.World(worldOptions);
       this.entities = [];
       this.particles = new Particles();
@@ -123,9 +126,27 @@
       e.dead = true;
       for (const b of bodiesOf(e)) b.enabled = false;
     }
+    // ダメージの数字など、少しの間だけ浮かんで消える文字
+    popup(x, y, str, color = '#fff', z = 0) {
+      this.popups.push({ x, y, z, str, color, life: 0.8 });
+    }
+    // モンスターを倒したときの共通処理。経験値とゴールドは3モードで共通の Party に入る
+    reward(kind, x, y, z = 0) {
+      const m = G.data.MONSTERS[kind];
+      const ups = this.party.defeat(kind);
+      this.popup(x, y, `+${m.exp}EXP`, '#ffef7a', z);
+      if (ups) this.levelUp = 1.6;
+      return ups;
+    }
+    updateEffects(dt) {
+      this.levelUp = Math.max(0, (this.levelUp ?? 0) - dt);
+      this.particles.update(dt);
+      for (const p of this.popups) { p.life -= dt; p.z += dt * 30; }
+      this.popups = this.popups.filter((p) => p.life > 0);
+    }
     stepWorld(dt) {
       this.time += dt;
-      this.particles.update(dt);
+      this.updateEffects(dt);
       if (this.freeze > 0) { this.freeze -= dt; return; }
       const n = this.entities.length;
       for (let i = 0; i < n; i++) {
@@ -208,6 +229,40 @@
     }
   }
 
+  function popups(ctx, list, project) {
+    for (const p of list) {
+      const s = project(p.x, p.y, p.z);
+      ctx.globalAlpha = clamp(p.life / 0.3, 0, 1);
+      text(ctx, p.str, s.x, s.y, { size: 12, align: 'center', baseline: 'bottom', color: p.color });
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // 3モード共通のステータス表示
+  function status(ctx, party, x = 8, y = 6) {
+    const bar = (by, value, max, color) => {
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillRect(x + 64, by + 3, 62, 6);
+      ctx.fillStyle = color;
+      ctx.fillRect(x + 64, by + 3, Math.round((62 * Math.max(0, value)) / max), 6);
+    };
+    ctx.fillStyle = 'rgba(14,12,40,0.6)';
+    ctx.fillRect(x - 4, y - 2, 196, 38);
+    text(ctx, `Lv${party.level}`, x, y + 10, { size: 13, color: '#ffef7a' });
+    text(ctx, 'HP', x + 40, y, { size: 11, color: '#ff8fa0' });
+    bar(y, party.hp, party.maxHp, '#ff5d73');
+    text(ctx, `${party.hp}/${party.maxHp}`, x + 132, y, { size: 11 });
+    text(ctx, 'MP', x + 40, y + 16, { size: 11, color: '#8fd3ff' });
+    bar(y + 16, party.mp, party.maxMp, '#5ab0f0');
+    text(ctx, `${party.mp}/${party.maxMp}`, x + 132, y + 16, { size: 11 });
+  }
+
+  function levelUp(ctx, scene) {
+    if (!scene.levelUp) return;
+    const y = 52 - Math.max(0, scene.levelUp - 1.3) * 60;
+    text(ctx, `LEVEL UP!  Lv${scene.party.level}`, G.W / 2, y, { size: 18, align: 'center', color: '#ffef7a' });
+  }
+
   function banner(ctx, title, sub, color) {
     ctx.fillStyle = 'rgba(10,8,30,0.6)';
     ctx.fillRect(0, G.H / 2 - 34, G.W, 68);
@@ -244,6 +299,6 @@
   G.Particles = Particles;
   G.Scene = Scene;
   G.Loop = Loop;
-  G.draw = { bodies: drawBodies, text, hearts, banner };
+  G.draw = { bodies: drawBodies, text, hearts, banner, popups, status, levelUp };
   G.modes = G.modes || {};
 })(globalThis.Game = globalThis.Game || {});

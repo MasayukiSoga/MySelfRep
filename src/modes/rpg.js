@@ -1,5 +1,5 @@
 /*
- * RPG：斜め見下ろし（クォータービュー）
+ * RPG：斜め見下ろし（クォータービュー）のフィールド。歩くとランダムエンカウントしてバトル画面へ
  * 物理の設定：平面の重力なし、タイルとの押し戻しあり、高さ z にだけ重力（ジャンプ用）
  * 物理は「真上から見た2D」で計算し、描画するときだけ斜めに変換する
  */
@@ -17,247 +17,87 @@
     '####################',
     '#..T......~~~....T.#',
     '#.P.......~~~~.....#',
-    '#....N....~~~~..S..#',
+    '#....N....~~~~.....#',
     '#..........~~......#',
     '#..##..............#',
     '#..#C....T.....T...#',
     '#........T.........#',
-    '#.....S.......##...#',
+    '#.............##...#',
     '#T...........#C#...#',
-    '#........S.........#',
-    '#..T..........N....#',
+    '#..................#',
+    '#..T..........I....#',
     '#.......##.........#',
-    '#.......#C......S..#',
-    '#..S...............#',
+    '#.......#C.........#',
+    '#..................#',
     '#...........T......#',
     '#....~~~...........#',
     '#....~~~.......T...#',
-    '#T........S......C.#',
+    '#T...............C.#',
     '####################',
   ];
 
-  const NPC_LINES = [
-    ['ようこそ！\nここは STG や ACT と おなじ ぶつりエンジンで うごいているよ。',
-      'ちがうのは せってい だけ。\nここでは へいめんの じゅうりょくが ゼロなんだ。',
-      'そのかわり 「たかさ」にだけ じゅうりょくが かかるよ。\nX キーで ジャンプしてみて。'],
-    ['スライムには ちかづくと ダメージを うけるよ。',
-      'でも ジャンプちゅうなら とびこえられる！\nあたりはんていは へいめんだけど、たかさを みて\nダメージを きめているんだ。',
-      'H キーで あたりはんていを みられるよ。'],
+  const GUIDE_LINES = [
+    'このあたりを あるいていると まものが あらわれるよ。\nかてば けいけんちと ゴールドが もらえる。',
+    'STG や ACT の せかいで まものを たおしても\nおなじ けいけんちが たまるんだ。',
+    'レベルが あがれば どの せかいでも つよくなれるよ。\nみなみの やどやで やすむと かいふくできるよ。',
   ];
 
-  const REWARDS = ['ひかるいし', 'ふるいちず', 'ゴールド 500', 'ハートのかけら'];
+  // 宝箱の中身。開けたかどうかは Party に記録するので、やり直しても復活しない
+  const REWARDS = [
+    { name: 'ちからのたね', apply: (p) => { p.bonus.atk += 2; p.recalc(); } },
+    { name: '50 ゴールド', apply: (p) => { p.gold += 50; } },
+    { name: 'まりょくのたね', apply: (p) => { p.bonus.mp += 4; p.recalc(); p.mp += 4; } },
+    { name: 'いのちのきのみ', apply: (p) => { p.bonus.hp += 8; p.recalc(); p.hp += 8; } },
+  ];
 
   class Adventurer {
     constructor(scene, x, y) {
       this.scene = scene;
-      this.hp = 4;
-      this.maxHp = 4;
-      this.inv = 0;
-      this.stun = 0;
       this.fx = 1;
       this.fy = 0;
-      this.attackT = -1;
-      this.hitList = new Set();
-      this.body = new Body({
-        x, y, r: 8, owner: this,
-        layer: Layer.PLAYER, mask: Layer.ENEMY | Layer.ITEM, blocks: Layer.NPC,
-        onEnter: (o) => { if (o.layer & Layer.ITEM) o.owner.collect(this); },
-      });
-      this.sword = new Body({
-        r: 13, gravityScale: 0, collideTiles: false, enabled: false, owner: this,
-        layer: Layer.PLAYER_ATTACK, mask: Layer.ENEMY,
-        onEnter: (o) => {
-          if (this.hitList.has(o)) return;
-          this.hitList.add(o);
-          o.owner.damage(1, this.fx, this.fy);
-          scene.freeze = 0.05;
-        },
-      });
-      this.bodies = [this.body, this.sword];
+      this.body = new Body({ x, y, r: 8, owner: this, layer: Layer.PLAYER, blocks: Layer.NPC });
     }
 
-    update(dt) {
+    update() {
       const b = this.body, input = this.scene.input;
-      this.inv -= dt;
-      this.stun -= dt;
-
       // 画面上の上下左右を、斜めの世界の向きに変換する
       const a = input.axis();
       let dx = a.x + a.y, dy = -a.x + a.y;
       const len = Math.hypot(dx, dy);
-      if (this.stun <= 0) {
-        if (len) {
-          dx /= len;
-          dy /= len;
-          if (this.attackT < 0) { this.fx = dx; this.fy = dy; }
-        }
-        const speed = this.attackT >= 0 ? 50 : 110;
-        b.vx = dx * speed;
-        b.vy = dy * speed;
+      if (len) {
+        dx /= len;
+        dy /= len;
+        this.fx = dx;
+        this.fy = dy;
       }
-
+      b.vx = dx * 110;
+      b.vy = dy * 110;
       if (input.pressed('b') && b.zGrounded) b.vz = 230;
-
-      if (input.pressed('a') && this.attackT < 0) {
+      if (input.pressed('a')) {
         const target = this.scene.world.query(b.x + this.fx * 16, b.y + this.fy * 16, 14, 14, Layer.NPC)[0];
         if (target) this.scene.openDialog(target.owner.interact());
-        else { this.attackT = 0; this.hitList.clear(); }
-      }
-      if (this.attackT >= 0) {
-        this.attackT += dt;
-        this.sword.enabled = this.attackT > 0.04 && this.attackT < 0.18;
-        this.sword.x = b.x + this.fx * 16;
-        this.sword.y = b.y + this.fy * 16;
-        if (this.attackT > 0.28) this.attackT = -1;
-      }
-
-      // 平面で重なっていても、ジャンプで高く飛んでいればダメージを受けない
-      for (const o of b.contacts) {
-        if ((o.layer & Layer.ENEMY) && b.z < 10) this.hurt(o);
-      }
-    }
-
-    hurt(o) {
-      if (this.inv > 0 || this.dead) return;
-      const b = this.body;
-      const d = Math.hypot(b.x - o.x, b.y - o.y) || 1;
-      this.hp--;
-      this.inv = 1.2;
-      this.stun = 0.2;
-      b.vx = ((b.x - o.x) / d) * 200;
-      b.vy = ((b.y - o.y) / d) * 200;
-      this.scene.shake = 0.2;
-      if (this.hp <= 0) {
-        this.scene.particles.burst(b.x, b.y, { count: 30, speed: 140, color: '#ffb347', life: 0.8 });
-        this.scene.kill(this);
-        this.scene.state = 'over';
       }
     }
 
     draw(ctx) {
       const s = this.scene, b = this.body;
-      const g = s.project(b.x, b.y, 0), p = s.project(b.x, b.y, b.z);
-      shadow(ctx, g);
-      if (this.inv > 0 && Math.floor(this.inv * 15) % 2) return;
-      const side = Math.sign((this.fx - this.fy) * IX) || 1;
-      const back = this.fx + this.fy < -0.2;
+      shadow(ctx, s.project(b.x, b.y, 0));
+      const p = s.project(b.x, b.y, b.z);
+      const facing = Math.sign(this.fx - this.fy) || 1;
       const step = Math.hypot(b.vx, b.vy) > 10 && b.zGrounded ? Math.floor(s.time * 10) % 2 : 0;
-      const x = Math.round(p.x), y = Math.round(p.y);
-      ctx.fillStyle = '#5a3d2b';
-      ctx.fillRect(x - 4, y - 3, 3, 3 - step);
-      ctx.fillRect(x + 1, y - 3, 3, 2 + step);
-      ctx.fillStyle = '#2f8f6b';
-      ctx.fillRect(x - 5, y - 12, 10, 9);
-      ctx.fillStyle = '#ffd6a5';
-      ctx.fillRect(x - 4, y - 19, 8, 7);
-      ctx.fillStyle = '#7a4a2a';
-      ctx.fillRect(x - 5, y - 21, 10, back ? 8 : 3);
-      if (!back) {
-        ctx.fillStyle = '#222';
-        ctx.fillRect(x + side * 2 - 1, y - 16, 2, 2);
-      }
-      if (this.attackT >= 0 && this.attackT < 0.22) {
-        const sw = s.project(b.x + this.fx * 18, b.y + this.fy * 18, b.z + 8);
-        ctx.strokeStyle = this.sword.enabled ? '#fff6a8' : '#e8f1ff';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(x, y - 9);
-        ctx.lineTo(sw.x, sw.y);
-        ctx.stroke();
-      }
-    }
-  }
-
-  class Slime {
-    constructor(scene, x, y) {
-      this.scene = scene;
-      this.hp = 3;
-      this.flash = 0;
-      this.kb = 0;
-      this.hop = rand(0, 0.6);
-      this.wander = { x: 0, y: 0, t: 0 };
-      this.body = new Body({ x, y, r: 9, owner: this, layer: Layer.ENEMY });
-    }
-    update(dt) {
-      const b = this.body, hero = this.scene.hero.body;
-      this.flash -= dt;
-      this.kb -= dt;
-      this.hop -= dt;
-      if (this.kb > 0) return;
-      const dx = hero.x - b.x, dy = hero.y - b.y, d = Math.hypot(dx, dy);
-      if (d < 150 && !this.scene.hero.dead) {
-        b.vx = (dx / d) * 45;
-        b.vy = (dy / d) * 45;
-      } else {
-        this.wander.t -= dt;
-        if (this.wander.t <= 0) {
-          const a = rand(0, Math.PI * 2);
-          this.wander = { x: Math.cos(a) * 25, y: Math.sin(a) * 25, t: rand(1, 2.5) };
-          if (Math.random() < 0.3) this.wander.x = this.wander.y = 0;
-        }
-        b.vx = this.wander.x;
-        b.vy = this.wander.y;
-      }
-      if (b.zGrounded && this.hop <= 0 && (b.vx || b.vy)) {
-        b.vz = 90;
-        this.hop = 0.7;
-      }
-    }
-    damage(n, fx, fy) {
-      const b = this.body;
-      this.hp -= n;
-      this.flash = 0.1;
-      this.kb = 0.25;
-      b.vx = fx * 180;
-      b.vy = fy * 180;
-      if (this.hp > 0) return;
-      this.scene.score += 100;
-      this.scene.particles.burst(b.x, b.y, { count: 14, speed: 90, color: '#9be56b', z: 6 });
-      if (Math.random() < 0.35) this.scene.add(new Heart(this.scene, b.x, b.y));
-      this.scene.kill(this);
-    }
-    draw(ctx) {
-      const s = this.scene, b = this.body;
-      const g = s.project(b.x, b.y, 0), p = s.project(b.x, b.y, b.z);
-      shadow(ctx, g);
-      const squish = b.zGrounded ? 1 + Math.sin(s.time * 8) * 0.08 : 0.9;
-      ctx.fillStyle = this.flash > 0 ? '#fff' : '#9be56b';
-      ctx.beginPath();
-      ctx.ellipse(p.x, p.y - 6 * squish, 10 / squish, 7 * squish, 0, Math.PI, 0);
-      ctx.lineTo(p.x + 10 / squish, p.y);
-      ctx.lineTo(p.x - 10 / squish, p.y);
-      ctx.fill();
-      ctx.fillStyle = '#1b3a12';
-      ctx.fillRect(p.x - 4, p.y - 7, 2, 3);
-      ctx.fillRect(p.x + 2, p.y - 7, 2, 3);
-    }
-  }
-
-  class Heart {
-    constructor(scene, x, y) {
-      this.scene = scene;
-      this.body = new Body({ x, y, r: 6, gravityScale: 0, collideTiles: false, owner: this, layer: Layer.ITEM });
-    }
-    update() {}
-    collect(hero) {
-      hero.hp = Math.min(hero.maxHp, hero.hp + 1);
-      this.scene.kill(this);
-    }
-    draw(ctx) {
-      const p = this.scene.project(this.body.x, this.body.y, 6 + Math.sin(this.scene.time * 4) * 2);
-      G.draw.hearts(ctx, p.x - 5, p.y - 10, 1, 1);
+      G.sprites.hero(ctx, p.x, p.y, { facing, step });
     }
   }
 
   class Villager {
-    constructor(scene, x, y, lines, color) {
+    constructor(scene, x, y, color, talk) {
       this.scene = scene;
-      this.lines = lines;
       this.color = color;
+      this.talk = talk;
       this.body = new Body({ x, y, w: 18, h: 18, gravityScale: 0, owner: this, layer: Layer.NPC });
     }
     update() {}
-    interact() { return this.lines; }
+    interact() { return this.talk(this.scene.party); }
     draw(ctx) {
       const s = this.scene, b = this.body;
       const p = s.project(b.x, b.y, Math.abs(Math.sin(s.time * 2)) * 2);
@@ -276,26 +116,22 @@
   }
 
   class Chest {
-    constructor(scene, x, y, reward) {
+    constructor(scene, x, y, id, reward) {
       this.scene = scene;
+      this.id = id;
       this.reward = reward;
-      this.opened = false;
       this.body = new Body({ x, y, w: 22, h: 22, gravityScale: 0, owner: this, layer: Layer.NPC });
     }
+    get opened() { return this.scene.party.flags.has(this.id); }
     update() {}
     interact() {
+      const s = this.scene, p = s.party;
       if (this.opened) return ['からっぽだ。'];
-      const s = this.scene;
-      this.opened = true;
-      s.score += 500;
-      s.found++;
-      if (this.reward === 'ハートのかけら') {
-        s.hero.maxHp++;
-        s.hero.hp = s.hero.maxHp;
-      }
+      p.flags.add(this.id);
+      this.reward.apply(p);
       s.particles.burst(this.body.x, this.body.y, { count: 20, speed: 80, color: '#ffd84d', z: 10 });
-      const lines = [`たからばこを あけた！\n「${this.reward}」を てにいれた。`];
-      if (s.found === s.chests) lines.push('すべての たからばこを みつけた！\nおめでとう！');
+      const lines = [`たからばこを あけた！\n「${this.reward.name}」を てにいれた。`];
+      if (s.found === s.chests.length) lines.push('すべての たからばこを みつけた！\nおめでとう！');
       return lines;
     }
     draw(ctx) {
@@ -328,29 +164,48 @@
     ctx.fill();
   }
 
+  // 出てくるモンスターの組み合わせ。ゴブリンはレベル2から、ドラゴンはレベル3からまれに出る
+  function encounterGroup(level) {
+    if (level >= 3 && Math.random() < 0.06) return ['dragon'];
+    const n = 1 + Math.floor(Math.random() * Math.min(3, level + 1));
+    const pool = level >= 2 ? ['slime', 'slime', 'bat', 'goblin'] : ['slime', 'slime', 'bat'];
+    return Array.from({ length: n }, () => pick(pool));
+  }
+
   class RpgScene extends Scene {
     constructor(game) {
-      const rows = MAP.map((r) => r.replace(/[PNSC]/g, '.'));
+      const rows = MAP.map((r) => r.replace(/[PNIC]/g, '.'));
       const map = new TileMap(rows, T, { solid: ['#', 'T', '~'] });
       super(game, { gravity: 0, zGravity: 800, map, cellSize: 64 });
-      this.shake = 0;
       this.camX = 0;
       this.camY = 0;
       this.dialog = null;
-      this.found = 0;
-      this.chests = 0;
-      let npc = 0;
+      this.battle = null;
+      this.chests = [];
+      this.walk = 0;
+      this.nextEncounter = rand(300, 560);
       MAP.forEach((row, ty) => {
         [...row].forEach((ch, tx) => {
           const x = tx * T + T / 2, y = ty * T + T / 2;
-          if (ch === 'P') this.hero = this.add(new Adventurer(this, x, y));
-          if (ch === 'S') this.add(new Slime(this, x, y));
-          if (ch === 'N') this.add(new Villager(this, x, y, NPC_LINES[npc], ['#c0392b', '#3b6fd8'][npc++]));
-          if (ch === 'C') this.add(new Chest(this, x, y, REWARDS[this.chests++]));
+          if (ch === 'P') {
+            this.start = { x, y };
+            this.hero = this.add(new Adventurer(this, x, y));
+          }
+          if (ch === 'N') this.add(new Villager(this, x, y, '#c0392b', () => GUIDE_LINES));
+          if (ch === 'I') {
+            this.add(new Villager(this, x, y, '#3b6fd8', (p) => {
+              p.restoreAll();
+              return ['やどやへ ようこそ。\nゆっくり やすんでいきなさい。', 'HP と MP が ぜんかいふくした！'];
+            }));
+          }
+          if (ch === 'C') this.chests.push(this.add(new Chest(this, x, y, `chest:${tx},${ty}`, REWARDS[this.chests.length])));
         });
       });
+      this.last = { x: this.hero.body.x, y: this.hero.body.y };
       this.snapCamera();
     }
+
+    get found() { return this.chests.filter((c) => c.opened).length; }
 
     project(x, y, z = 0) {
       return { x: (x - y) * IX - this.camX, y: (x + y) * IY - z - this.camY };
@@ -365,8 +220,35 @@
 
     openDialog(lines) { this.dialog = { lines, i: 0 }; }
 
+    startBattle(kinds) {
+      const b = this.hero.body;
+      b.vx = b.vy = 0;
+      this.battle = new G.Battle(this, kinds);
+      this.walk = 0;
+      this.nextEncounter = rand(300, 560);
+    }
+
     update(dt) {
-      this.shake = Math.max(0, this.shake - dt);
+      if (this.battle) {
+        this.battle.update(dt);
+        if (this.battle.mode === 'done') {
+          if (this.battle.result === 'lose') this.state = 'over';
+          this.battle = null;
+        }
+        return;
+      }
+      if (this.state === 'over') {
+        this.time += dt;
+        if (this.input.pressed('a')) {
+          // 復活して最初の場所へ戻る
+          this.party.revive();
+          Object.assign(this.hero.body, { x: this.start.x, y: this.start.y, vx: 0, vy: 0 });
+          this.last = { ...this.start };
+          this.snapCamera();
+          this.state = 'play';
+        }
+        return;
+      }
       if (this.dialog) {
         this.time += dt;
         if (this.input.pressed('a') || this.input.pressed('b')) {
@@ -375,9 +257,14 @@
         }
         return;
       }
-      if (this.state === 'over' && this.input.pressed('a')) this.restart = true;
       this.stepWorld(dt);
       this.snapCamera(Math.min(1, dt * 8));
+
+      // 歩いた距離がたまるとエンカウント
+      const b = this.hero.body;
+      this.walk += Math.hypot(b.x - this.last.x, b.y - this.last.y);
+      this.last = { x: b.x, y: b.y };
+      if (this.walk >= this.nextEncounter && b.zGrounded) this.startBattle(encounterGroup(this.party.level));
     }
 
     drawGround(ctx, tx, ty, ch) {
@@ -421,11 +308,13 @@
     }
 
     draw(ctx) {
+      if (this.battle) {
+        this.battle.draw(ctx);
+        return;
+      }
       const map = this.world.map;
       ctx.fillStyle = '#1f2a44';
       ctx.fillRect(0, 0, W, H);
-      ctx.save();
-      if (this.shake > 0) ctx.translate(rand(-2, 2), rand(-2, 2));
 
       const visible = (tx, ty) => {
         const p = this.project(tx * T + T / 2, ty * T + T / 2);
@@ -447,17 +336,17 @@
       objects.sort((a, b) => a.depth - b.depth);
       for (const o of objects) o.draw();
       this.particles.draw(ctx, (x, y, z) => this.project(x, y, z));
-      ctx.restore();
 
       const D = G.draw;
-      D.hearts(ctx, 10, 9, Math.max(0, this.hero.hp), this.hero.maxHp);
-      D.text(ctx, `たからばこ ${this.found}/${this.chests}`, W - 10, 8, { size: 12, align: 'right', color: '#ffd84d' });
-      D.text(ctx, `SCORE ${this.score}`, W - 10, 24, { size: 12, align: 'right' });
+      D.status(ctx, this.party);
+      D.text(ctx, `${this.party.gold} G`, W - 10, 6, { size: 12, align: 'right', color: '#ffd84d' });
+      D.text(ctx, `たからばこ ${this.found}/${this.chests.length}`, W - 10, 22, { size: 12, align: 'right', color: '#ffd84d' });
+      D.levelUp(ctx, this);
 
       if (this.dialog) {
         const lines = this.dialog.lines[this.dialog.i].split('\n');
         const h = 18 + lines.length * 17;
-        ctx.fillStyle = 'rgba(14,12,40,0.92)';
+        ctx.fillStyle = 'rgba(14,12,40,0.94)';
         ctx.fillRect(12, H - h - 12, W - 24, h);
         ctx.strokeStyle = '#e9e6ff';
         ctx.lineWidth = 2;
@@ -465,14 +354,14 @@
         lines.forEach((l, i) => D.text(ctx, l, 24, H - h + i * 17, { size: 13, shadow: false }));
         if (Math.floor(this.time * 3) % 2) D.text(ctx, '▼', W - 32, H - 30, { size: 10, shadow: false });
       }
-      if (this.state === 'over') D.banner(ctx, 'GAME OVER', 'Z でもう一度', '#ff5d73');
+      if (this.state === 'over') D.banner(ctx, 'GAME OVER', 'Z で さいしょの ばしょから（ゴールドが半分になります）', '#ff5d73');
     }
   }
 
   G.modes.rpg = {
     id: 'rpg',
     label: 'RPG',
-    name: '斜め見下ろしRPG',
+    name: 'フィールドとバトル',
     create: (game) => new RpgScene(game),
   };
 })(globalThis.Game = globalThis.Game || {});
