@@ -93,40 +93,130 @@ test('スタイルを切り替えても、フィールドと主人公の位置�
   assert.equal(scene.style.id, 'act');
 });
 
-test('RPG スタイルではシンボルが出ず、歩くとエンカウントする', () => {
+test('どのスタイルでもシンボルが出て、切り替えても同じモンスターがそのまま残る', () => {
+  const game = newGame();
+  const scene = new G.FieldScene(game, 'act');
+  steps(scene, 200);
+  const before = scene.monsters;
+  assert.ok(before.length > 0);
+  before[0].hp = 1;
+  for (const id of ['rpg', 'stg', 'rpg', 'act']) {
+    assert.ok(scene.setStyle(id));
+    steps(scene, 1);
+    for (const m of before) assert.ok(scene.monsters.includes(m), `${id} に切り替えても残る`);
+  }
+  assert.equal(before[0].hp, 1, 'HP もそのまま');
+});
+
+test('RPG スタイルではシンボルは透明で、追いかけてこない', () => {
   const game = newGame();
   const scene = new G.FieldScene(game, 'rpg');
-  scene.nextEncounter = 60;
-  game.input.press('right');
-  for (let i = 0; i < 120 && !scene.battle; i++) steps(scene, 1);
-  assert.ok(scene.battle);
-  assert.equal(scene.monsters.length, 0);
+  const b = scene.hero.body;
+  const m = scene.add(new FieldMonster(scene, 'slime', b.x + 100, b.y));
+  let drawn = 0;
+  const orig = G.sprites.monster;
+  G.sprites.monster = () => { drawn++; };
+  scene.draw(fakeContext());
+  G.sprites.monster = orig;
+  assert.equal(drawn, 0);
+  m.wander = { x: 0, y: 0, t: 99 };
+  steps(scene, 30);
+  assert.equal(m.body.vx, 0, '近くにいても追いかけない');
 });
 
-test('ACT・STG スタイルではエンカウントせず、シンボルが出る', () => {
-  for (const id of ['act', 'stg']) {
-    const game = newGame();
-    const scene = new G.FieldScene(game, id);
-    scene.nextEncounter = 10;
-    game.input.press('down');
-    steps(scene, 300);
-    assert.equal(scene.battle, null, id);
-    assert.ok(scene.monsters.length > 0, id);
-  }
-});
+// 主人公の位置にシンボルを重ねる
+function touch(scene, kind) {
+  const b = scene.hero.body;
+  const m = scene.add(new FieldMonster(scene, kind, b.x, b.y));
+  m.wander = { x: 0, y: 0, t: 99 };
+  return m;
+}
 
-test('RPG スタイルに戻すとシンボルと弾は消える。バトル中は切り替えられない', () => {
+test('RPG スタイル：ぶつかるとダメージではなく、そのモンスター（残り HP のまま）とバトル', () => {
   const game = newGame();
-  const scene = new G.FieldScene(game, 'stg');
-  steps(scene, 300);
-  assert.ok(scene.monsters.length > 0);
-  scene.setStyle('rpg');
+  const scene = new G.FieldScene(game, 'rpg');
+  const m = touch(scene, 'goblin');
+  m.hp = 3;
+  steps(scene, 2);
+  assert.ok(scene.battle);
+  assert.equal(scene.battle.foes.length, 1);
+  assert.equal(scene.battle.foes[0].kind, 'goblin');
+  assert.equal(scene.battle.foes[0].hp, 3);
+  assert.equal(game.party.hp, game.party.maxHp);
+});
+
+test('ACT スタイル：ぶつかるとバトルではなくダメージ', () => {
+  const game = newGame();
+  const scene = new G.FieldScene(game, 'act');
+  scene.hero.inv = 0;
+  touch(scene, 'slime');
+  steps(scene, 2);
+  assert.equal(scene.battle, null);
+  assert.ok(game.party.hp < game.party.maxHp);
+});
+
+// バトルを最後まで進める（Z を押し続ける。逃げるときは「にげる」を選ぶ）
+function finishBattle(scene, choose = 0) {
+  const { input } = scene;
+  for (let i = 0; i < 4000 && scene.battle; i++) {
+    const bt = scene.battle;
+    if (bt.mode === 'command' && bt.cursor !== choose) {
+      if (i % 4 === 0) input.press('down'); else input.release('down');
+    } else if (i % 4 === 0) input.press('a');
+    else input.release('a');
+    scene.update(G.DT);
+    input.endStep();
+  }
+  input.releaseAll();
+}
+
+test('バトルに勝つとシンボルが消え、経験値は1回分だけ入る', () => {
+  const game = newGame();
+  const scene = new G.FieldScene(game, 'rpg');
+  const m = touch(scene, 'slime');
+  steps(scene, 2);
+  finishBattle(scene);
   steps(scene, 1);
-  assert.equal(scene.monsters.length, 0);
-  assert.ok(!scene.entities.some((e) => e instanceof Bolt || e instanceof EnemyShot));
+  assert.equal(scene.battle, null);
+  assert.ok(!scene.monsters.includes(m));
+  assert.equal(game.party.exp, G.data.MONSTERS.slime.exp);
+});
+
+test('バトルから逃げると、シンボルは残り HP のまま残り、すぐには再戦にならない', () => {
+  const game = newGame();
+  const scene = new G.FieldScene(game, 'rpg');
+  const m = touch(scene, 'dragon');
+  steps(scene, 2);
+  const origRandom = Math.random;
+  Math.random = () => 0; // 逃げるのを必ず成功させる
+  scene.battle.foes[0].hp = 50;
+  finishBattle(scene, 2);
+  Math.random = origRandom;
+  assert.equal(scene.battle, null);
+  assert.ok(scene.monsters.includes(m));
+  assert.equal(m.hp, 50);
+  steps(scene, 30);
+  assert.equal(scene.battle, null, '逃げた直後は重なっていてもバトルにならない');
+});
+
+test('バトル中はスタイルを切り替えられない', () => {
+  const game = newGame();
+  const scene = new G.FieldScene(game, 'rpg');
   scene.startBattle(['slime']);
   assert.equal(scene.setStyle('act'), false);
   assert.equal(scene.style.id, 'rpg');
+});
+
+test('スタイルを切り替えると飛んでいる弾は消える', () => {
+  const game = newGame();
+  const scene = new G.FieldScene(game, 'stg');
+  game.input.press('a');
+  steps(scene, 20);
+  game.input.release('a');
+  assert.ok(scene.entities.some((e) => e instanceof Bolt));
+  scene.setStyle('act');
+  steps(scene, 1);
+  assert.ok(!scene.entities.some((e) => e instanceof Bolt || e instanceof EnemyShot));
 });
 
 // 主人公の目の前にモンスターを置く

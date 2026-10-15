@@ -16,7 +16,8 @@
   const SPELL_LIST = [SPELLS.fire, SPELLS.heal];
 
   class Battle {
-    constructor(scene, kinds) {
+    // foes：モンスターの種類の配列。{ kind, hp } を渡すと、フィールドで削った残りの HP から始まる
+    constructor(scene, foes) {
       this.scene = scene;
       this.party = scene.party;
       this.input = scene.input;
@@ -38,14 +39,15 @@
       this.hero = { x: 392, y: 212, lunge: 0, flash: 0, glow: 0 };
 
       // 同じモンスターが複数いたら A・B・C を付けて呼び分ける
+      const specs = foes.map((f) => (typeof f === 'string' ? { kind: f } : f));
       const total = {}, seen = {};
-      for (const k of kinds) total[k] = (total[k] ?? 0) + 1;
-      this.foes = kinds.map((kind, i) => {
+      for (const { kind } of specs) total[kind] = (total[kind] ?? 0) + 1;
+      this.foes = specs.map(({ kind, hp }, i) => {
         let name = MONSTERS[kind].name;
         if (total[kind] > 1) name += 'ABC'[(seen[kind] = (seen[kind] ?? -1) + 1)];
         return {
-          kind, name, hp: MONSTERS[kind].hp,
-          x: 170 + (i - (kinds.length - 1) / 2) * 92, y: 212,
+          kind, name, hp: hp ?? MONSTERS[kind].hp,
+          x: 170 + (i - (specs.length - 1) / 2) * 92, y: 212,
           flash: 0, alpha: 1, dying: false, lunge: 0, t: rand(0, 3),
         };
       });

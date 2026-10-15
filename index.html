@@ -224,7 +224,7 @@
   </header>
 
   <nav class="modes" role="tablist" aria-label="モード">
-    <button type="button" role="tab" data-mode="rpg" aria-selected="true"><span class="key">1</span><strong>RPG</strong><small>エンカウントでコマンドバトル</small></button>
+    <button type="button" role="tab" data-mode="rpg" aria-selected="true"><span class="key">1</span><strong>RPG</strong><small>見えない敵とコマンドバトル</small></button>
     <button type="button" role="tab" data-mode="act" aria-selected="false"><span class="key">2</span><strong>ACT</strong><small>その場で剣と魔法</small></button>
     <button type="button" role="tab" data-mode="stg" aria-selected="false"><span class="key">3</span><strong>STG</strong><small>その場で魔法を連射</small></button>
   </nav>
@@ -255,13 +255,13 @@
         <dt><kbd>Z</kbd></dt><dd>人や宝箱の前なら、話す・開ける</dd>
       </dl>
       <dl data-for="rpg">
-        <dt>RPG</dt><dd>歩くとモンスターに出会い、バトル画面へ。<kbd>↑↓</kbd>で選んで<kbd>Z</kbd>で決定、<kbd>X</kbd>で戻る</dd>
+        <dt>RPG</dt><dd>モンスターは見えなくなる。ぶつかるとバトル画面へ。<kbd>↑↓</kbd>で選んで<kbd>Z</kbd>で決定、<kbd>X</kbd>で戻る</dd>
       </dl>
       <dl data-for="act" hidden>
-        <dt>ACT</dt><dd>フィールドにモンスターが現れる。<kbd>Z</kbd>で剣、<kbd>C</kbd>でファイア（MP 3）</dd>
+        <dt>ACT</dt><dd>モンスターが見え、追いかけてくる。<kbd>Z</kbd>で剣、<kbd>C</kbd>でファイア（MP 3）</dd>
       </dl>
       <dl data-for="stg" hidden>
-        <dt>STG</dt><dd>フィールドにモンスターが現れ、弾を撃ってくる。<kbd>Z</kbd>長押しで魔法の弾（向きを固定したまま動ける）、<kbd>C</kbd>で貫通するファイア</dd>
+        <dt>STG</dt><dd>モンスターが見え、弾を撃ってくる。<kbd>Z</kbd>長押しで魔法の弾（向きを固定したまま動ける）、<kbd>C</kbd>で貫通するファイア</dd>
       </dl>
       <p>ACT と STG では MP が少しずつ回復します。南の宿屋で休むと全回復します。WASD でも移動できます。スマホでは画面下のボタンで操作します。</p>
     </div>
@@ -274,17 +274,17 @@
             <tr><th></th><th class="rpg">RPG</th><th class="act">ACT</th><th class="stg">STG</th></tr>
           </thead>
           <tbody>
-            <tr><th>敵の出かた</th><td class="rpg">ランダムエンカウント</td><td class="act">フィールドにシンボル</td><td class="stg">フィールドにシンボル</td></tr>
-            <tr><th>戦う場所</th><td class="rpg">バトル画面</td><td class="act">フィールド</td><td class="stg">フィールド</td></tr>
+            <tr><th>シンボル</th><td class="rpg">透明（うろうろする）</td><td class="act">見える（追いかけてくる）</td><td class="stg">見える（追いかけてくる）</td></tr>
+            <tr><th>ぶつかると</th><td class="rpg">バトル画面へ</td><td class="act">ダメージ</td><td class="stg">ダメージ</td></tr>
             <tr><th>Z ボタン</th><td class="rpg">話す・調べる</td><td class="act">剣</td><td class="stg">魔法の弾（連射）</td></tr>
             <tr><th>C ボタン</th><td class="rpg">－</td><td class="act">ファイア</td><td class="stg">ファイア（貫通）</td></tr>
             <tr><th>敵の弾</th><td class="rpg">－</td><td class="act">ゴブリンの投石だけ</td><td class="stg">多い</td></tr>
             <tr><th>物理エンジン</th><td class="rpg">歩く・壁で止まる</td><td class="act">剣の判定・敵との接触</td><td class="stg">たくさんの弾の判定</td></tr>
-            <tr class="shared"><th>共通</th><td colspan="3">フィールド、勇者の位置と成長、モンスターと魔法のデータ、ダメージ計算、見た目、物理の設定</td></tr>
+            <tr class="shared"><th>共通</th><td colspan="3">フィールド、勇者の位置と成長、フィールドにいるモンスター（位置と残り HP）、魔法、ダメージ計算、物理の設定</td></tr>
           </tbody>
         </table>
       </div>
-      <p class="note">切り替えても物理の設定は同じです。変わるのは攻撃ボタンの意味と敵の出かただけなので、バトル中と会話中以外ならいつでも切り替えられます。</p>
+      <p class="note">モンスターは切り替えても消えません。ACT で弱らせたゴブリンに RPG でぶつかると、弱ったままのゴブリンとバトルになります。バトルから逃げると、そのモンスターは残り HP のままフィールドに残ります。</p>
     </div>
   </section>
 </div>

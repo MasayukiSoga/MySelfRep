@@ -41,7 +41,7 @@
 
   const GUIDE_LINES = [
     'ここは ひとつの フィールド。\nボタンで たたかいかたを きりかえられるよ。',
-    'RPG なら あるくと まものに であって バトルがめんへ。\nACT なら けんで、STG なら まほうの たまで\nその場で たたかうんだ。',
+    'まものは いつも フィールドに いるよ。\nRPG だと すがたが みえなくなって、ぶつかると バトルがめんへ。\nACT なら けんで、STG なら まほうの たまで たたかうんだ。',
     'どの たたかいかたでも けいけんちは おなじように たまるよ。\nみなみの やどやで やすむと かいふくできるよ。',
   ];
 
@@ -141,7 +141,7 @@
       this.stun -= dt;
       this.cool -= dt;
       this.castT -= dt;
-      if (style.symbols) s.party.regenMp(dt);
+      if (!style.touchBattle) s.party.regenMp(dt);
 
       // 画面上の上下左右を、斜めの世界の向きに変換する
       const a = input.axis();
@@ -172,9 +172,12 @@
         if (this.attackT > 0.28) this.attackT = -1;
       }
 
-      // 平面で重なっていても、ジャンプで高く飛んでいればダメージを受けない
+      // 平面で重なっていても、ジャンプで高く飛んでいれば当たらない
+      // RPG スタイルではダメージのかわりにバトル画面へ
       for (const o of b.contacts) {
-        if ((o.layer & Layer.ENEMY) && b.z < 10) this.hurt(o.owner.damageTo(s.party), o);
+        if (!(o.layer & Layer.ENEMY) || b.z >= 10) continue;
+        if (style.touchBattle) s.encounter(o.owner);
+        else this.hurt(o.owner.damageTo(s.party), o);
       }
     }
 
@@ -338,7 +341,8 @@
 
       const dx = hero.x - b.x, dy = hero.y - b.y, d = Math.hypot(dx, dy) || 1;
       const speed = SPEED[this.kind];
-      if (d < 170 && !s.hero.dead) {
+      // 透明なとき（RPG スタイル）は追いかけず、うろうろするだけ
+      if (d < 170 && !s.hero.dead && !s.style.hidden) {
         b.vx = (dx / d) * speed;
         b.vy = (dy / d) * speed;
       } else {
@@ -386,6 +390,7 @@
     }
     draw(ctx) {
       const s = this.scene, b = this.body;
+      if (s.style.hidden) return;
       shadow(ctx, s.project(b.x, b.y, 0), b.r);
       const p = s.project(b.x, b.y, b.z);
       const hero = s.hero.body;
@@ -468,11 +473,6 @@
   function monsterPool(level) {
     return level >= 2 ? ['slime', 'slime', 'bat', 'goblin'] : ['slime', 'slime', 'bat'];
   }
-  function encounterGroup(level) {
-    if (level >= 3 && Math.random() < 0.06) return ['dragon'];
-    const n = 1 + Math.floor(Math.random() * Math.min(3, level + 1));
-    return Array.from({ length: n }, () => pick(monsterPool(level)));
-  }
 
   class FieldScene extends Scene {
     constructor(game, styleId = 'rpg') {
@@ -486,8 +486,8 @@
       this.dialog = null;
       this.battle = null;
       this.chests = [];
-      this.walk = 0;
-      this.nextEncounter = rand(300, 560);
+      this.symbol = null; // バトル中の相手のシンボル
+      this.encounterWait = 0; // 逃げた直後にすぐ同じ相手とバトルにならないための待ち時間
       this.spawnT = 0.5;
       MAP.forEach((row, ty) => {
         [...row].forEach((ch, tx) => {
@@ -506,7 +506,6 @@
           if (ch === 'C') this.chests.push(this.add(new Chest(this, x, y, `chest:${tx},${ty}`, REWARDS[this.chests.length])));
         });
       });
-      this.last = { x: this.hero.body.x, y: this.hero.body.y };
       this.snapCamera();
     }
 
@@ -532,13 +531,10 @@
       const b = this.hero.body;
       this.hero.attackT = -1;
       this.hero.sword.enabled = false;
-      // 飛んでいる弾は消す。RPG スタイルではシンボルも消える（そのかわりランダムエンカウント）
+      // 飛んでいる弾だけ消す。モンスターは位置も HP もそのまま残る
       for (const e of this.entities) {
         if (e instanceof Bolt || e instanceof EnemyShot) this.kill(e);
-        if (!this.style.symbols && e instanceof FieldMonster) this.kill(e);
       }
-      this.walk = 0;
-      this.spawnT = 0.3;
       this.popup(b.x, b.y, `${this.style.label} スタイル`, '#ffef7a', 40);
       this.particles.burst(b.x, b.y, { count: 16, speed: 70, color: '#ffef7a', life: 0.5, z: 10 });
       return true;
@@ -546,12 +542,32 @@
 
     openDialog(lines) { this.dialog = { lines, i: 0 }; }
 
-    startBattle(kinds) {
+    // シンボルにぶつかったら、そのモンスター（残り HP もそのまま）とバトル
+    encounter(monster) {
+      if (this.battle || this.encounterWait > 0 || monster.dead) return;
+      this.symbol = monster;
+      this.startBattle([{ kind: monster.kind, hp: monster.hp }]);
+    }
+
+    startBattle(foes) {
       const b = this.hero.body;
       b.vx = b.vy = 0;
-      this.battle = new G.Battle(this, kinds);
-      this.walk = 0;
-      this.nextEncounter = rand(300, 560);
+      this.battle = new G.Battle(this, foes);
+    }
+
+    endBattle() {
+      const { result, foes } = this.battle;
+      const symbol = this.symbol;
+      this.battle = null;
+      this.symbol = null;
+      if (result === 'lose') { this.gameOver(); return; }
+      if (!symbol) return;
+      // 勝ったらシンボルは消える（経験値はバトル画面で受け取り済み）。逃げたら残り HP のまま残る
+      if (result === 'win') this.kill(symbol);
+      else {
+        symbol.hp = foes[0].hp;
+        this.encounterWait = 2;
+      }
     }
 
     gameOver() {
@@ -582,10 +598,7 @@
       this.shake = Math.max(0, this.shake - dt);
       if (this.battle) {
         this.battle.update(dt);
-        if (this.battle.mode === 'done') {
-          if (this.battle.result === 'lose') this.gameOver();
-          this.battle = null;
-        }
+        if (this.battle.mode === 'done') this.endBattle();
         return;
       }
       if (this.state === 'over') {
@@ -603,21 +616,14 @@
         return;
       }
 
-      if (this.style.symbols) {
-        this.spawnT -= dt;
-        if (this.spawnT <= 0) {
-          this.spawnT = 1.5;
-          if (this.monsters.length < 4 + Math.min(4, this.party.level)) this.spawnMonster();
-        }
+      this.encounterWait -= dt;
+      this.spawnT -= dt;
+      if (this.spawnT <= 0) {
+        this.spawnT = 1.5;
+        if (this.monsters.length < 4 + Math.min(4, this.party.level)) this.spawnMonster();
       }
       this.stepWorld(dt);
       this.snapCamera(Math.min(1, dt * 8));
-
-      // RPG スタイルでは、歩いた距離がたまるとエンカウント
-      const b = this.hero.body;
-      if (this.style.encounters) this.walk += Math.hypot(b.x - this.last.x, b.y - this.last.y);
-      this.last = { x: b.x, y: b.y };
-      if (this.walk >= this.nextEncounter && b.zGrounded) this.startBattle(encounterGroup(this.party.level));
     }
 
     // 復活して最初の場所へ戻る。まわりのモンスターと弾は消す
@@ -629,8 +635,7 @@
       const b = this.hero.body;
       Object.assign(b, { x: this.start.x, y: this.start.y, vx: 0, vy: 0, z: 0, vz: 0 });
       this.hero.inv = 1.5;
-      this.last = { ...this.start };
-      this.walk = 0;
+      this.encounterWait = 1.5;
       this.snapCamera();
       this.state = 'play';
     }
