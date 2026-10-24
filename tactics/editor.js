@@ -28,7 +28,7 @@
   const TCOL = Object.fromEntries(TERRAINS.map(t => [t.code, t.color]));
   const TNAME = Object.fromEntries(TERRAINS.map(t => [t.code, t.name]));
   const CLASSES = [
-    ['knight', 'ナイト', '騎'], ['soldier', 'ソルジャー', '兵'], ['archer', 'アーチャー', '弓'], ['wizard', 'ウィザード', '魔'], ['shieldKnight', 'シールドナイト（2 マス吹き飛ばし）', '盾'],
+    ['knight', 'ナイト', '騎'], ['soldier', 'ソルジャー', '兵'], ['archer', 'アーチャー', '弓'], ['wizard', 'ウィザード', '魔'], ['cleric', 'クレリック（回復）', '僧'], ['shieldKnight', 'シールドナイト（2 マス吹き飛ばし）', '盾'],
     ['goblin', 'ゴブリン', 'ゴ'], ['wolf', 'ウルフ', '狼'], ['orc', 'オーク', 'オ'], ['golem', 'ゴーレム', '巨'],
     ['fairy', '妖精（低空）', '妖'], ['pegasus', 'ペガサス（中空）', '天'], ['pegasusKnight', 'ペガサスナイト（中空）', '天'],
     ['griffon', 'グリフォン（高空）', '鷲'], ['griffonRider', 'グリフォンライダー（高空）', '鷲'], ['garuda', 'ガルーダ（最高空）', '鳥'],
@@ -45,7 +45,7 @@
   const AIS = [
     ['', '自動（陣営・役割から決定）'], ['aggressive', '突撃'], ['cautious', '慎重'], ['guard', '守備（攻撃できる時だけ動く）'],
     ['hold', '固守（動かない）'], ['sniper', '狙撃'], ['hunter', '弱者狙い'], ['berserk', '激昂'], ['objective', '拠点突破'],
-    ['escort', '護衛（将のそば）'], ['goto', '移動（エリアへ・攻撃しない）'], ['flee', '逃走'],
+    ['escort', '護衛（将のそば）'], ['goto', '移動（エリアへ・攻撃しない）'], ['flee', '逃走'], ['support', '支援（味方に付き添い回復）'],
   ];
   const AI_IDS = new Set(AIS.map(a => a[0]).filter(Boolean));
   const HAIRS = ['#c89040', '#503828', '#e8d070', '#b05a30', '#303848', '#8a5a3a', '#a0a0a8', '#6a4020', '#d0a060', '#404040'];

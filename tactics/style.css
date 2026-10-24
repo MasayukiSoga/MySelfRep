@@ -102,17 +102,23 @@ body {
 .st { color: #ff9070; }
 .fly { color: #a8e8ff; }
 .zoc { color: #ffb060; }
+.up { color: #90ffa0; }
+.down { color: #ff9070; }
+.psn { color: #e0a0ff; margin-left: 2px; }
+.slp { color: #a8d8ff; margin-left: 2px; }
 
 #menu {
   right: 3px;
   bottom: 53px;
-  width: 58px;
+  min-width: 58px;
   list-style: none;
   padding: 3px 4px 3px 13px;
   pointer-events: auto;
 }
 #menu li { position: relative; height: 12px; line-height: 12px; cursor: pointer; }
 #menu li.dis { color: #7c84b0; }
+#menu li .mp { float: right; margin-left: 8px; color: #a8d0ff; }
+#menu li.dis .mp { color: #7c84b0; }
 #menu li.sel::before {
   content: '▶';
   position: absolute;

@@ -16,14 +16,15 @@
 // reinforcements: [{ round, text, units: [...] }] 指定ラウンドに入ると増援が出現
 // units   : team は 'player' / 'enemy'。cls は knight / soldier / archer / wizard / goblin / wolf / orc / golem、
 //           shieldKnight シールドナイト（両手に盾。当たると 1 マス、45% でさらに 1 マス吹き飛ばす）、
+//           cleric クレリック（回復・補助のスキル。既定の思考は support）、
 //           飛行: fairy 妖精（低空）/ pegasus・pegasusKnight（中空）/ griffon・griffonRider（高空）/ garuda（最高空）。
 //           騎乗兵（pegasusKnight / griffonRider）はチーム色の鎧、それ以外の魔物は固有の配色
 //           golem は 4×4 マスを占有する大型ユニット。x, y は占有範囲の奥の角（x, y が最小のマス）
 //           id: イベントで参照する名前（省略時は name で参照）
 //           ai: 思考ルーチン。aggressive 突撃 / cautious 慎重 / guard 守備（攻撃できる時だけ動く）/ hold 固守（動かない）
 //               / sniper 狙撃 / hunter 弱者狙い / berserk 激昂 / objective 拠点突破 / escort 護衛（将のそば）
-//               / goto 移動（aiArea のエリアへ、攻撃しない）/ flee 逃走（相手から離れる）
-//               省略時: 味方 cautious、敵将 guard、防衛戦の敵 objective、他の敵 aggressive
+//               / goto 移動（aiArea のエリアへ、攻撃しない）/ flee 逃走（相手から離れる）/ support 支援（味方に付き添う）
+//               省略時: クレリックは support、味方 cautious、敵将 guard、防衛戦の敵 objective、他の敵 aggressive
 // areas   : { 名前: [[x, y], …] } 名前付きエリア。イベント条件 reach や goto の行き先に使う
 // rules   : { zoc: false } で ZOC（相手に隣接するマスに入ると移動が止まる）を無効にする。既定は有効
 //           { ceiling: 6 } 天井の高さ（地形と同じ段）。飛行ユニットは天井 − 足場 − 1 までしか上がれず、
@@ -85,6 +86,7 @@ window.TACTICS_MAPS = [
       { name: 'セリカ', cls: 'archer', team: 'player', x: 11, y: 8, lv: 4, hair: '#e8d070', facing: 2 },
       { name: 'ミラ', cls: 'wizard', team: 'player', x: 10, y: 11, lv: 4, hair: '#b05a30', facing: 3 },
       { name: 'ガルド', cls: 'soldier', team: 'player', x: 9, y: 10, lv: 5, hair: '#503828', facing: 2 },
+      { name: 'シア', cls: 'cleric', team: 'player', x: 11, y: 10, lv: 4, hair: '#f0d8a0', facing: 2 },
       { name: 'バルバス', cls: 'knight', team: 'enemy', x: 8, y: 1, lv: 6, hair: '#484048', facing: 1, leader: true },
       { name: 'ロイ', cls: 'soldier', team: 'enemy', x: 7, y: 2, lv: 4, hair: '#6a4020', facing: 1 },
       { name: 'ザック', cls: 'soldier', team: 'enemy', x: 5, y: 0, lv: 4, hair: '#302018', facing: 1 },
@@ -154,6 +156,7 @@ window.TACTICS_MAPS = [
       { name: 'ノア', cls: 'archer', team: 'player', x: 11, y: 17, lv: 4, hair: '#8a5a3a', facing: 3 },
       { name: 'ミラ', cls: 'wizard', team: 'player', x: 9, y: 18, lv: 4, hair: '#b05a30', facing: 3 },
       { name: 'エルザ', cls: 'wizard', team: 'player', x: 10, y: 18, lv: 4, hair: '#e0e0f0', facing: 3 },
+      { name: 'シア', cls: 'cleric', team: 'player', x: 9, y: 17, lv: 4, hair: '#f0d8a0', facing: 3 },
       { name: 'ヴォルク', cls: 'knight', team: 'enemy', x: 9, y: 0, lv: 7, hair: '#582828', facing: 1, leader: true },
       { name: 'ロイ', cls: 'soldier', team: 'enemy', x: 9, y: 5, lv: 4, hair: '#6a4020', facing: 1 },
       { name: 'ダン', cls: 'soldier', team: 'enemy', x: 10, y: 5, lv: 4, hair: '#403020', facing: 1 },
@@ -289,11 +292,13 @@ window.TACTICS_MAPS = [
     ],
     units: [
       { name: 'レオン', cls: 'knight', team: 'player', x: 8, y: 14, lv: 5, hair: '#c89040', facing: 3 },
+      { name: 'シア', cls: 'cleric', team: 'player', x: 11, y: 14, lv: 4, hair: '#f0d8a0', facing: 3 },
       { name: 'カイン', cls: 'knight', team: 'player', x: 9, y: 14, lv: 5, hair: '#303848', facing: 3 },
       { name: 'ガルド', cls: 'soldier', team: 'player', x: 7, y: 14, lv: 5, hair: '#503828', facing: 3 },
       { name: 'セリカ', cls: 'archer', team: 'player', x: 8, y: 15, lv: 4, hair: '#e8d070', facing: 3 },
       { name: 'ノア', cls: 'archer', team: 'player', x: 10, y: 15, lv: 4, hair: '#8a5a3a', facing: 3 },
       { name: 'ミラ', cls: 'wizard', team: 'player', x: 9, y: 15, lv: 4, hair: '#b05a30', facing: 3 },
+      { name: 'グレゴ', cls: 'cleric', team: 'enemy', x: 9, y: 3, lv: 4, hair: '#808088', facing: 1 },
       { name: 'ガーランド', cls: 'knight', team: 'enemy', x: 8, y: 2, lv: 7, hair: '#c0c0c8', facing: 1, leader: true },
       { name: 'ロイ', cls: 'soldier', team: 'enemy', x: 7, y: 6, lv: 4, hair: '#6a4020', facing: 1 },
       { name: 'ダン', cls: 'soldier', team: 'enemy', x: 10, y: 6, lv: 4, hair: '#403020', facing: 1 },

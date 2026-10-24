@@ -381,6 +381,8 @@
   const OV_CURSOR = makeDiamond([255, 250, 200, 50], [255, 236, 80, 255]);
   const OV_ZOC = makeDiamond([255, 120, 20, 140], [255, 214, 90, 255]);
   const OV_GOAL = makeDiamond([80, 230, 120, 110], [180, 255, 190, 230]);
+  const OV_HEAL = makeDiamond([60, 220, 140, 130], [170, 255, 200, 220]);
+  const OV_AREA = makeDiamond([255, 230, 90, 150], [255, 250, 200, 255]);
 
   const ARROW = pixelArt(
     ['.ooooooo.', 'oyyyyyyyo', '.oyyyyyo.', '..oyyyo..', '...oyo...', '....o....'],
@@ -424,10 +426,15 @@
 
   // ---------------------------------------------------------------- ユニット
   const CLASSES = {
-    knight: { name: 'ナイト', sprite: 'fighter', hp: 96, mp: 12, atk: 30, def: 20, agi: 8, move: 4, jump: 2, range: [1, 1], wt: 110, type: 'melee' },
-    soldier: { name: 'ソルジャー', sprite: 'fighter', hp: 82, mp: 8, atk: 26, def: 15, agi: 10, move: 4, jump: 2, range: [1, 1], wt: 100, type: 'melee' },
-    archer: { name: 'アーチャー', sprite: 'fighter', hp: 66, mp: 10, atk: 23, def: 10, agi: 13, move: 4, jump: 2, range: [2, 4], wt: 95, type: 'bow' },
-    wizard: { name: 'ウィザード', sprite: 'caster', hp: 56, mp: 48, atk: 30, def: 8, agi: 9, move: 3, jump: 1, range: [1, 3], wt: 105, type: 'magic' },
+    knight: { name: 'ナイト', sprite: 'fighter', hp: 96, mp: 12, atk: 30, def: 20, agi: 8, move: 4, jump: 2, range: [1, 1], wt: 110, type: 'melee', skills: ['rally'] },
+    soldier: { name: 'ソルジャー', sprite: 'fighter', hp: 82, mp: 8, atk: 26, def: 15, agi: 10, move: 4, jump: 2, range: [1, 1], wt: 100, type: 'melee', skills: ['armorBreak'] },
+    archer: { name: 'アーチャー', sprite: 'fighter', hp: 66, mp: 10, atk: 23, def: 10, agi: 13, move: 4, jump: 2, range: [2, 4], wt: 95, type: 'bow', skills: ['poisonArrow'] },
+    wizard: { name: 'ウィザード', sprite: 'caster', hp: 56, mp: 48, atk: 30, def: 8, agi: 9, move: 3, jump: 1, range: [1, 3], wt: 105, type: 'magic', skills: ['flame', 'sleep'] },
+    // 回復役：杖で殴る程度の近接攻撃と回復・補助の魔法。既定の思考は味方に付き添う support
+    cleric: {
+      name: 'クレリック', sprite: 'cleric', hp: 60, mp: 60, atk: 20, def: 10, agi: 9, move: 4, jump: 2, range: [1, 1], wt: 100, type: 'melee',
+      skills: ['heal', 'healCircle', 'cure', 'protect'], ai: 'support',
+    },
     // 両手に盾：攻撃は弱いが、当たると必ず 1 マス、knockback2 の確率でさらに 1 マス吹き飛ばす
     shieldKnight: {
       name: 'シールドナイト', sprite: 'shielder', hp: 104, mp: 8, atk: 22, def: 26, agi: 8, move: 4, jump: 2,
@@ -435,7 +442,7 @@
     },
     // 魔物はチーム色ではなく固有の配色（pal）
     goblin: {
-      name: 'ゴブリン', sprite: 'goblin', hp: 48, mp: 0, atk: 21, def: 8, agi: 12, move: 4, jump: 2, range: [1, 1], wt: 90, type: 'melee',
+      name: 'ゴブリン', sprite: 'goblin', hp: 48, mp: 6, atk: 21, def: 8, agi: 12, move: 4, jump: 2, range: [1, 1], wt: 90, type: 'melee', skills: ['poisonBlade'],
       pal: { s: '#6aa04a', h: '#4a7a34', k: '#ffd040', a: '#7a5a3a', b: '#5a3e26', n: '#6a4a2a' },
     },
     wolf: {
@@ -448,7 +455,7 @@
     // 魔物（pal 固定の配色）と、チーム色の鎧を着た騎乗兵の両方を用意する
     fairy: {
       name: '妖精', sprite: 'fairy', knockback: 1, fly: 1, climb: 3, minFly: 1, groundMove: 3, groundJump: 2, hp: 44, mp: 40, atk: 24, def: 6, agi: 16, move: 5, jump: 3,
-      range: [1, 3], wt: 90, type: 'magic',
+      range: [1, 3], wt: 90, type: 'magic', skills: ['heal', 'sleep'],
       pal: { s: '#f8d8b8', a: '#80e0a0', b: '#50b070', v: '#d8f4ff', w: '#a8e0ff' },
     },
     pegasus: {
@@ -479,7 +486,7 @@
     // 大型ユニット：size×size マスを占有し、tall 段ぶんの高さがある（2 段でおよそマスの一辺の長さ）。reachH は近接攻撃が届く高低差
     golem: {
       name: 'ゴーレム', sprite: 'golem', knockback: 1, size: 4, tall: 12, hp: 360, mp: 0, atk: 40, def: 24, agi: 3,
-      move: 3, jump: 2, range: [1, 2], reachH: 12, wt: 140, type: 'melee',
+      move: 3, jump: 2, range: [1, 2], reachH: 12, wt: 140, type: 'melee', immune: ['poison', 'sleep'],
     },
     orc: {
       name: 'オーク', sprite: 'fighter', knockback: 1, hp: 110, mp: 0, atk: 32, def: 16, agi: 6, move: 3, jump: 1, range: [1, 1], wt: 120, type: 'melee',
@@ -709,6 +716,33 @@
     },
   };
 
+  // 僧侶：ローブ（a / b はチーム色の縁取り c と白地）にフード
+  SPRITES.cleric = {
+    head: [4, 6], feet: 17,
+    rows: [
+      '................',
+      '................',
+      '......oooo......',
+      '.....occcco.....',
+      '....occcccco.g..',
+      '....ocsssscogng.',
+      '....oskssks..g..',
+      '.....osssso...n.',
+      '....occaacco..n.',
+      '...oaacaacaaosno',
+      '..osaaacaaaaso..',
+      '..osoaacaaao..n.',
+      '...o.oacaao...n.',
+      '....oaacaaao..n.',
+      '....oaacaaao..n.',
+      '...oaaacaaaao.n.',
+      '...obaacaaabo...',
+      '..obbbbcbbbbbo..',
+      '..oooooooooooo..',
+      '................',
+    ],
+  };
+
   // 騎乗兵：乗騎のドット絵に騎手を重ねる（騎手はチーム色の鎧 a / b、兜の房 c）
   const RIDER = [
     '',
@@ -735,11 +769,13 @@
       fighter: { a: '#4a74d8', b: '#2c4aa8', c: '#f0e8d0' }, caster: { a: '#6a7ae8', b: '#3a48b0', c: '#2c3890' },
       pegasusKnight: { a: '#5a84e8', b: '#2c4aa8', c: '#f0e8d0' }, griffonRider: { a: '#4a74d8', b: '#2c4aa8', c: '#f0e8d0' },
       shielder: { a: '#4a74d8', b: '#2c4aa8', c: '#f0e8d0', q: '#b8c0d0' },
+      cleric: { a: '#f0f0f4', b: '#b8bcd0', c: '#4a74d8' },
     },
     enemy: {
       fighter: { a: '#c84a3c', b: '#842a24', c: '#3a2c30' }, caster: { a: '#c05050', b: '#842c2c', c: '#4a1a24' },
       pegasusKnight: { a: '#d05a48', b: '#842a24', c: '#3a2c30' }, griffonRider: { a: '#c84a3c', b: '#842a24', c: '#3a2c30' },
       shielder: { a: '#c84a3c', b: '#842a24', c: '#3a2c30', q: '#a8a0a0' },
+      cleric: { a: '#e8e4e0', b: '#aca4a4', c: '#c84a3c' },
     },
   };
 
@@ -1075,22 +1111,92 @@
 
   // 高低差と攻撃方向（正面・側面・背面）で命中とダメージが変わる
   // pos: 攻撃するマス（複数マスの城門ではユニット位置と異なる）
-  function forecast(att, tgt, from, pos = tgt) {
+  // sk: スキルで攻撃するとき（power 倍、magic なら魔法の計算式）
+  function forecast(att, tgt, from, pos = tgt, sk = null) {
     const dh = effH(att, from) - targetH(pos, tgt);
-    const antiAir = att.C.type === 'bow' && altOf(tgt) > 0;   // 弓は飛行ユニットに強い
+    const magic = sk ? !!sk.magic : att.C.type === 'magic';
+    const antiAir = !magic && att.C.type === 'bow' && altOf(tgt) > 0;   // 弓は飛行ユニットに強い
     const d = dirToward(pos, centerOf(att, from));
     // 城門などの構造物には向きがない（常に正面扱い・必中）
     const rel = tgt.facing == null || d === tgt.facing ? 'front' : d === (tgt.facing + 2) % 4 ? 'back' : 'side';
-    const magic = att.C.type === 'magic';
-    let dmg = magic ? att.atk * 1.3 - tgt.def * 0.4 : att.atk * 1.25 - tgt.def * 0.7;
+    let dmg = baseDmg(att, tgt, magic) * (sk?.power ?? 1);
     dmg *= 1 + clamp(dh * 0.08, -0.3, 0.5);
     if (!magic) dmg *= rel === 'back' ? 1.4 : rel === 'side' ? 1.2 : 1;
     if (antiAir) dmg *= 1.3;
-    let hit = tgt.isObject ? 99
+    let hit = tgt.isObject || tgt.st?.sleep ? 99   // 眠っている相手には必ず当たる
       : magic ? 92 : 80 + (att.agi - tgt.agi) * 2 + clamp(dh, -5, 5) * 4 + (rel === 'back' ? 15 : rel === 'side' ? 7 : 0) + (antiAir ? 15 : 0);
     return { dmg: Math.max(1, Math.round(dmg)), hit: clamp(Math.round(hit), 5, 99), rel, magic };
   }
   const REL = { front: '', side: '側面から', back: '背後から!' };
+
+  // ---------------------------------------------------------------- 能力変化と状態異常
+  // u.st = { poison: 残りターン, sleep: 残りターン, atk: { v: 増減, n: 残りターン }, def: { … } }
+  // 残りターンは本人の手番の開始ごとに減る（tickStatus）
+  const atkOf = u => u.atk + (u.st?.atk?.v || 0);
+  const defOf = u => u.def + (u.st?.def?.v || 0);
+  const baseDmg = (a, t, magic) => magic ? atkOf(a) * 1.3 - defOf(t) * 0.4 : atkOf(a) * 1.25 - defOf(t) * 0.7;
+  const STATUS = {
+    poison: { name: '毒', popup: 'POISON', color: '#d080ff' },
+    sleep: { name: '睡眠', popup: 'SLEEP', color: '#a8d8ff' },
+  };
+  // HUD に出す状態の短い表記
+  function statusLabels(u) {
+    const st = u.st || {}, out = [];
+    if (st.poison) out.push('<span class="psn">毒</span>');
+    if (st.sleep) out.push('<span class="slp">眠</span>');
+    return out.join('');
+  }
+  const statNum = (u, k) => {
+    const v = u.st?.[k]?.v || 0, n = k === 'atk' ? atkOf(u) : defOf(u);
+    return v > 0 ? `<span class="up">${n}</span>` : v < 0 ? `<span class="down">${n}</span>` : `<b>${n}</b>`;
+  };
+
+  // ---------------------------------------------------------------- スキル
+  // kind: attack（ダメージ）/ heal（回復）/ status（状態異常）/ buff（能力変化）/ cure（状態異常と弱体化を治す）
+  // affects: 効果が及ぶ相手 foe / ally / all（all は味方も巻き込む）
+  // range: [最小, 最大]（術者の体の端からのマス数。0 は自分）か 'weapon'（通常攻撃と同じ射程・高低差の規則）
+  // area: 効果範囲の半径（狙ったマスからのマンハッタン距離）。power: ダメージ倍率 / 回復量の基本値（scale × 攻撃力を足す）
+  // status: { id, turns, chance } を当たった相手に与える。buff: { atk, def } を turns ターン加える（負の値で弱体化）
+  const SKILLS = {
+    flame: { name: 'フレイム', kind: 'attack', affects: 'all', range: [2, 4], area: 1, mp: 16, power: 0.85, magic: true, fx: 'fire' },
+    sleep: { name: 'スリープ', kind: 'status', affects: 'foe', range: [1, 4], mp: 10, status: { id: 'sleep', turns: 2, chance: 70 }, fx: 'sleep' },
+    heal: { name: 'ヒール', kind: 'heal', affects: 'ally', range: [0, 3], mp: 8, power: 18, scale: 0.8, fx: 'heal' },
+    healCircle: { name: 'ヒールサークル', kind: 'heal', affects: 'ally', range: [0, 2], area: 1, mp: 18, power: 12, scale: 0.6, fx: 'heal' },
+    cure: { name: 'キュア', kind: 'cure', affects: 'ally', range: [0, 3], mp: 6, fx: 'heal' },
+    protect: { name: 'プロテクト', kind: 'buff', affects: 'ally', range: [0, 3], mp: 8, buff: { def: 8 }, turns: 3, fx: 'buff' },
+    rally: { name: '鼓舞', kind: 'buff', affects: 'ally', range: [0, 0], area: 1, mp: 6, buff: { atk: 6 }, turns: 3, fx: 'rally' },
+    poisonArrow: { name: '毒矢', kind: 'attack', affects: 'foe', range: 'weapon', mp: 4, power: 0.8, status: { id: 'poison', turns: 4, chance: 70 } },
+    poisonBlade: { name: '毒の刃', kind: 'attack', affects: 'foe', range: 'weapon', mp: 3, power: 0.8, status: { id: 'poison', turns: 4, chance: 60 } },
+    armorBreak: { name: 'アーマーブレイク', kind: 'attack', affects: 'foe', range: 'weapon', mp: 4, power: 0.9, buff: { def: -8 }, turns: 3 },
+  };
+  const skillsOf = u => (u.C.skills || []).filter(id => SKILLS[id]);
+  const supportSkill = sk => sk.kind !== 'attack' && sk.kind !== 'status';
+  // 回復量
+  const healAmount = (a, sk) => Math.round(sk.power + atkOf(a) * (sk.scale || 0));
+
+  function skillInRange(u, sk, from, pos) {
+    if (sk.range === 'weapon') return inRange(u, from, pos);
+    const d = gap(from, pos, sizeOf(u), 1);
+    return d >= sk.range[0] && d <= sk.range[1];
+  }
+  const skillTileSet = (u, sk, from) => new Set(tiles.filter(t => skillInRange(u, sk, from, t)).map(t => key(t.x, t.y)));
+  // 狙ったマスを中心とする効果範囲
+  function skillArea(sk, pos) {
+    const r = sk.area || 0, out = [];
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.abs(dx) + Math.abs(dy) <= r && tileAt(pos.x + dx, pos.y + dy)) out.push({ x: pos.x + dx, y: pos.y + dy });
+      }
+    }
+    return out;
+  }
+  // 効果を受けるユニット（構造物は対象外）
+  function skillTargets(u, sk, pos) {
+    const area = skillArea(sk, pos);
+    return units.filter(v => !v.dead && area.some(t => covers(v, t.x, t.y)) &&
+      (sk.affects === 'all' || (sk.affects === 'ally') === (v.team === u.team)));
+  }
+  const immune = (v, id) => (v.C.immune || []).includes(id);
 
   // ---------------------------------------------------------------- 状態
   const state = {
@@ -1117,6 +1223,11 @@
     8: ['111', '101', '111', '101', '111'], 9: ['111', '101', '111', '001', '111'],
     M: ['10001', '11011', '10101', '10001', '10001'], I: ['111', '010', '010', '010', '111'],
     S: ['011', '100', '010', '001', '110'],
+    A: ['010', '101', '111', '101', '101'], C: ['011', '100', '100', '100', '011'], D: ['110', '101', '101', '101', '110'],
+    E: ['111', '100', '111', '100', '111'], F: ['111', '100', '111', '100', '100'], K: ['101', '101', '110', '101', '101'],
+    L: ['100', '100', '100', '100', '111'], N: ['1001', '1101', '1011', '1001', '1001'], O: ['010', '101', '101', '101', '010'],
+    P: ['110', '101', '110', '100', '100'], R: ['110', '101', '110', '101', '101'], T: ['111', '010', '010', '010', '010'],
+    U: ['101', '101', '101', '101', '111'], '+': ['000', '010', '111', '010', '000'], '-': ['000', '000', '111', '000', '000'],
   };
   function drawPixelText(s, cx, y, color, sc = 2) {
     const glyphs = [...s].map(ch => FONT[ch]).filter(Boolean);
@@ -1185,10 +1296,17 @@
     const zocStop = state.phase === 'move' && state.moveTiles?.has(k) && state.reach?.get(k)?.zoc;
     const hazard = state.phase === 'move' && state.moveTiles?.has(k) && state.active && hazardDmg(state.active, t);
     const ov = hazard ? OV_ATK : zocStop ? OV_ZOC : state.phase === 'move' && state.moveTiles?.has(k) ? OV_MOVE
-      : state.phase === 'target' && state.atkTiles?.has(k) ? OV_ATK : null;
+      : state.phase === 'target' && state.atkTiles?.has(k) ? OV_ATK
+      : state.phase === 'skill' && state.skillTiles?.has(k) ? (supportSkill(SKILLS[state.skill]) ? OV_HEAL : OV_ATK) : null;
     if (ov) {
       ctx.globalAlpha = pulse;
       ctx.drawImage(ov, x, y);
+      ctx.globalAlpha = 1;
+    }
+    // スキルの効果範囲（カーソルが射程内のとき）
+    if (state.skillArea?.has(k)) {
+      ctx.globalAlpha = 0.5 + 0.3 * Math.sin(now / 110);
+      ctx.drawImage(OV_AREA, x, y);
       ctx.globalAlpha = 1;
     }
     // ZOC：移動範囲内で止まるマス、またはカーソルを合わせた相手の支配領域を橙で示す
@@ -1279,7 +1397,35 @@
     if (!(u.blink && Math.floor(now / 50) % 2)) {
       ctx.drawImage(fc, gx - (fc.width >> 1) + Math.round(u.offX), bodyY - fc.foot + Math.round(u.offY));
     }
+    drawStatusIcons(u, gx + Math.round(u.offX), bodyY - fc.foot - 4 + Math.round(u.offY), now);
     ctx.globalAlpha = 1;
+  }
+
+  // 頭上の状態アイコン：毒（紫の滴）、睡眠（Z）、能力の上昇（▲）・低下（▼）
+  const ICONS = {
+    poison: { c: '#c060f0', rows: ['.x.', 'xxx', 'xxx', '.x.'] },
+    sleep: { c: '#c8e8ff', rows: ['xxx', '..x', '.x.', 'xxx'] },
+    atkUp: { c: '#ff6040', rows: ['..x..', '.xxx.', 'xxxxx'] }, atkDown: { c: '#ff6040', rows: ['xxxxx', '.xxx.', '..x..'] },
+    defUp: { c: '#60a0ff', rows: ['..x..', '.xxx.', 'xxxxx'] }, defDown: { c: '#60a0ff', rows: ['xxxxx', '.xxx.', '..x..'] },
+  };
+  function drawStatusIcons(u, cx, y, now) {
+    const st = u.st;
+    if (!st) return;
+    const list = [];
+    if (st.poison) list.push('poison');
+    if (st.sleep) list.push('sleep');
+    for (const k of ['atk', 'def']) if (st[k]) list.push(k + (st[k].v > 0 ? 'Up' : 'Down'));
+    if (!list.length) return;
+    const w = list.reduce((a, id) => a + ICONS[id].rows[0].length + 1, -1);
+    let x = cx - (w >> 1);
+    list.forEach((id, i) => {
+      const ic = ICONS[id], bob = id === 'sleep' ? Math.round(Math.sin(now / 300) * 1.5) : Math.floor(now / 400 + i) % 2;
+      ctx.fillStyle = '#000';
+      ic.rows.forEach((r, j) => [...r].forEach((b, k) => { if (b === 'x') ctx.fillRect(x + k + 1, y - 4 + j - bob + 1, 1, 1); }));
+      ctx.fillStyle = ic.c;
+      ic.rows.forEach((r, j) => [...r].forEach((b, k) => { if (b === 'x') ctx.fillRect(x + k, y - 4 + j - bob, 1, 1); }));
+      x += ic.rows[0].length + 1;
+    });
   }
 
   function toScreen(x, y, h) {
@@ -1315,6 +1461,17 @@
           const s = p < 0.7 ? 2 : 1;
           ctx.fillRect(Math.round(cx + Math.cos(ang) * r), Math.round(cy - 10 + Math.sin(ang) * r * 0.7 - p * 8), s, s);
         }
+      } else if (e.kind === 'glow') {
+        // 回復・補助：足元から光の粒が立ちのぼる
+        const [cx, cy] = toScreen(...e.at);
+        const cols = e.cols || ['#ffffff', '#b0ffc0', '#40d070'];
+        for (let j = 0; j < 14; j++) {
+          const q = (p * 1.3 + hash(j, 2, 3)) % 1, ang = j / 14 * Math.PI * 2;
+          ctx.fillStyle = cols[Math.floor(hash(j, 5, 1) * cols.length)];
+          ctx.globalAlpha = 1 - q;
+          ctx.fillRect(Math.round(cx + Math.cos(ang) * (6 + q * 2)), Math.round(cy - 2 + Math.sin(ang) * 3 - q * 22), 1, 2);
+        }
+        ctx.globalAlpha = 1;
       } else if (e.kind === 'spark') {
         const [cx, cy] = toScreen(...e.at);
         ctx.fillStyle = '#ffffff';
@@ -1332,13 +1489,14 @@
     for (let i = popups.length - 1; i >= 0; i--) {
       const pp = popups[i], age = now - pp.t0;
       if (age > 1100) { popups.splice(i, 1); continue; }
+      if (age < 0) continue;   // 時間差で出す表示（ダメージの後の状態異常など）
       const [cx, cy] = toScreen(pp.u.x, pp.u.y, pp.h);
       const rise = age < 220 ? Math.sin(age / 220 * Math.PI) * 8 + age / 220 * 6 : 6;
-      drawPixelText(pp.text, cx, Math.round(cy - 30 - rise), pp.color);
+      drawPixelText(pp.text, cx, Math.round(cy - 30 - rise - (pp.dy || 0)), pp.color);
     }
   }
 
-  const cursorVisible = () => ['menu', 'look', 'move', 'target', 'preview'].includes(state.phase);
+  const cursorVisible = () => ['menu', 'skillmenu', 'look', 'move', 'target', 'skill', 'preview'].includes(state.phase);
 
   function cameraTarget() {
     const f = state.camUnit;
@@ -1509,7 +1667,7 @@
         `<div class="row"><span class="nm">${u.name}</span><span class="cl">${u.name === u.C.name ? '' : u.C.name}</span><span class="lv">Lv${u.lv}</span></div>` +
         `<div class="row"><span class="lb">HP</span>${bar(u.hp, u.maxHp)}<span class="num">${u.hp}/${u.maxHp}</span></div>` +
         `<div class="row"><span class="lb">MP</span>${bar(u.mp, u.maxMp, 'mp')}<span class="num">${u.mp}/${u.maxMp}</span></div>` +
-        `<div class="row">WT <b>${u.wt}</b>&nbsp;攻<b>${u.atk}</b>&nbsp;防<b>${u.def}</b>${altOf(u) ? `&nbsp;<span class="fly">高度${altOf(u)}</span>` : grounded(u) ? '&nbsp;<span class="st">飛行不可</span>' : ''}${u.status ? `&nbsp;<span class="st">${u.status}</span>` : u.leader ? '&nbsp;<span class="rel">★将</span>' : ''}</div>`;
+        `<div class="row">WT <b>${u.wt}</b>&nbsp;攻${statNum(u, 'atk')}&nbsp;防${statNum(u, 'def')}${statusLabels(u)}${altOf(u) ? `&nbsp;<span class="fly">高度${altOf(u)}</span>` : grounded(u) ? '&nbsp;<span class="st">飛行不可</span>' : ''}${u.status ? `&nbsp;<span class="st">${u.status}</span>` : u.leader ? '&nbsp;<span class="rel">★将</span>' : ''}</div>`;
     }
 
     let info = `<div class="hint">${state.hint}</div>`;
@@ -1532,8 +1690,40 @@
           })()}</span></div>`;
       }
     }
+    if (state.phase === 'skill' && active) info = skillInfo(active, SKILLS[state.skill], cursor) || info;
     $info.innerHTML = info;
   }
+
+  // スキルの対象を選んでいるときの予測表示
+  function skillInfo(u, sk, pos) {
+    state.skillArea = null;
+    if (!state.skillTiles?.has(key(pos.x, pos.y))) return null;
+    if (sk.area) state.skillArea = new Set(skillArea(sk, pos).map(t => key(t.x, t.y)));
+    const ts = skillTargets(u, sk, pos);
+    const head = `<div class="row"><b>${sk.name}</b><span class="lv">MP ${sk.mp}</span></div>`;
+    if (!ts.length) return head + '<div class="row">対象がいない</div>';
+    const t = ts[0], many = ts.length > 1;
+    const who = many ? `${ts.length} 体` : `<span class="nm ${t.team}">${t.name}</span>`;
+    const ally = ts.filter(v => v.team === u.team).length;
+    let body;
+    if (sk.kind === 'attack') {
+      const f = forecast(u, t, u, pos, sk);
+      body = `<div class="row">命中率 <b>${f.hit}%</b> ダメージ <b>${f.dmg}</b></div>`;
+      if (sk.status) body += `<div class="row"><span class="st">${STATUS[sk.status.id].name} ${immune(t, sk.status.id) ? '無効' : sk.status.chance + '%'}</span></div>`;
+      else if (sk.buff) body += `<div class="row"><span class="st">${buffText(sk)}</span></div>`;
+    } else if (sk.kind === 'heal') {
+      body = `<div class="row">回復 <b>${healAmount(u, sk)}</b></div>`;
+    } else if (sk.kind === 'status') {
+      body = `<div class="row">成功率 <b>${immune(t, sk.status.id) ? '無効' : sk.status.chance + '%'}</b></div>`;
+    } else if (sk.kind === 'buff') {
+      body = `<div class="row"><span class="rel">${buffText(sk)}</span></div>`;
+    } else {
+      body = '<div class="row">状態異常・弱体化を治す</div>';
+    }
+    const warn = sk.affects === 'all' && ally ? `<div class="row"><span class="st">味方 ${ally} 体を巻き込む!</span></div>` : '';
+    return head + `<div class="row">${who}${many ? 'に' : 'へ'}</div>` + body + warn;
+  }
+  const buffText = sk => Object.entries(sk.buff).map(([k, v]) => `${k === 'atk' ? '攻撃' : '防御'}${v > 0 ? '+' : ''}${v}`).join(' ') + ` ${sk.turns}T`;
 
   function renderMenu() {
     $menu.innerHTML = state.menuItems.map((m, i) =>
@@ -1571,7 +1761,46 @@
       await applyHazard(u);
       if (u.dead) { if (!checkEnd()) setTimeout(nextTurn, 250); return; }
     }
+    if (await tickStatus(u)) return;
     if (u.team === 'enemy' || state.auto) await runAi(u); else openMenu();
+  }
+
+  // 手番の開始時：毒の被害、能力変化の残りターンを減らす、眠っていれば手番を飛ばす。
+  // 手番が終わった（倒れた・眠っている）なら true
+  async function tickStatus(u) {
+    const st = u.st;
+    if (!st) return false;
+    for (const k of ['atk', 'def']) if (st[k] && --st[k].n <= 0) delete st[k];
+    if (st.poison) {
+      st.poison--;
+      const dmg = Math.max(1, Math.round(u.maxHp * 0.1)), now = performance.now();
+      u.hp = Math.max(0, u.hp - dmg);
+      popups.push({ u, h: H(u.x, u.y) + altOf(u), text: String(dmg), color: STATUS.poison.color, t0: now });
+      effects.push({ kind: 'glow', at: [u.x, u.y, H(u.x, u.y) + altOf(u)], t0: now, until: now + 600, cols: ['#e0a0ff', '#a040e0', '#602090'] });
+      u.blink = true;
+      state.hint = `${u.name}は毒に蝕まれている…`;
+      updateHUD();
+      await wait(600);
+      u.blink = false;
+      if (u.hp <= 0) {
+        await defeat(u);
+        await runEvents();
+        if (!checkEnd()) setTimeout(nextTurn, 250);
+        return true;
+      }
+    }
+    if (st.sleep) {
+      st.sleep--;
+      state.hint = `${u.name}は眠っている…`;
+      updateHUD();
+      await wait(700);
+      // 眠って過ごした手番は行動したのと同じだけ WT が戻る
+      state.moved = state.acted = true;
+      endTurn();
+      return true;
+    }
+    updateHUD();
+    return false;
   }
 
   async function runAi(u) {
@@ -1655,11 +1884,12 @@
   function openMenu() {
     const u = state.active;
     state.phase = 'menu';
-    state.moveTiles = state.atkTiles = null;
+    state.moveTiles = state.atkTiles = state.skillTiles = state.skillArea = null;
     setCursor(u.x, u.y);
     state.menuItems = [
       { label: '移動', enabled: !state.moved, act: startMove },
       { label: u.C.type === 'magic' ? '魔法' : '攻撃', enabled: !state.acted && canAttack(u), act: startTarget },
+      ...(skillsOf(u).length ? [{ label: 'スキル', enabled: !state.acted && skillsOf(u).some(id => u.mp >= SKILLS[id].mp), act: startSkillMenu }] : []),
       { label: '待機', enabled: true, act: startFacing },
     ];
     state.menuIndex = Math.max(0, state.menuItems.findIndex(m => m.enabled));
@@ -1686,6 +1916,32 @@
     state.atkTiles = attackTileSet(u, u);
     state.phase = 'target';
     state.hint = u.C.type === 'magic' ? '魔法の対象を選択' : '攻撃対象を選択';
+    updateHUD();
+  }
+
+  function startSkillMenu() {
+    const u = state.active;
+    state.phase = 'skillmenu';
+    state.skillTiles = state.skillArea = null;
+    state.menuItems = skillsOf(u).map(id => {
+      const sk = SKILLS[id];
+      return { label: `${sk.name}<span class="mp">${sk.mp}</span>`, enabled: u.mp >= sk.mp, act: () => startSkill(id) };
+    });
+    const last = state.menuItems.findIndex((m, i) => skillsOf(u)[i] === state.skill && m.enabled);
+    state.menuIndex = last >= 0 ? last : Math.max(0, state.menuItems.findIndex(m => m.enabled));
+    state.hint = 'スキルを選択<br>(右の数字は消費 MP)';
+    setCursor(u.x, u.y);
+    renderMenu();
+    $menu.classList.remove('hidden');
+  }
+
+  function startSkill(id) {
+    const u = state.active, sk = SKILLS[id];
+    state.skill = id;
+    state.skillTiles = skillTileSet(u, sk, u);
+    state.phase = 'skill';
+    state.hint = `${sk.name}の対象を選択`;
+    if (sk.range !== 'weapon' && sk.range[1] === 0) setCursor(u.x, u.y);
     updateHUD();
   }
 
@@ -1737,14 +1993,16 @@
     await runEvents();
   }
 
-  async function doAttack(a, t, pos = t) {
+  // sk: 射程 'weapon' のスキル（毒矢など）は通常攻撃の演出で放つ
+  async function doAttack(a, t, pos = t, sk = null) {
     state.lastAttack = state.clock;
-    const fc = forecast(a, t, a, pos);
+    const fc = forecast(a, t, a, pos, sk);
     const type = a.C.type;
     a.facing = dirToward(centerOf(a), pos);
-    state.hint = `${a.name}の${type === 'magic' ? 'ファイア' : type === 'bow' ? '射撃' : '攻撃'}！`;
+    state.hint = `${a.name}の${sk ? sk.name : type === 'magic' ? 'ファイア' : type === 'bow' ? '射撃' : '攻撃'}！`;
     setCursor(pos.x, pos.y);
-    if (type === 'magic') a.mp -= MAGIC_COST;
+    if (sk) a.mp -= sk.mp;
+    else if (type === 'magic') a.mp -= MAGIC_COST;
     // 城門は扉の中ほどを狙う
     const at = [pos.x, pos.y, t.isObject ? H(pos.x, pos.y) + 2 : targetH(pos, t)];
     // 飛行ユニットの近接攻撃は相手の高さまで急降下する
@@ -1776,6 +2034,8 @@
       const dmg = Math.max(1, Math.round(fc.dmg * (0.9 + Math.random() * 0.2)));
       t.hp = Math.max(0, t.hp - dmg);
       popups.push({ u: pos, h: at[2], text: String(dmg), color: '#ffffff', t0: now });
+      if (t.st?.sleep) t.st.sleep = 0;   // 攻撃を受けると目を覚ます
+      if (sk && t.hp > 0 && !t.isObject) skillEffect(a, t, sk, pos, at[2], now + 400);
       if (t.isObject) {
         t.damage = 1 - t.hp / t.maxHp;
         for (const gt of t.tiles) gt.canvas = buildTile(gt);
@@ -1796,15 +2056,102 @@
     t.blink = false;
     if (hitLanded && t.hp > 0 && !t.dead) await knockback(a, t);
     if (t.dead) { await runEvents(); return; }
-    if (t.hp <= 0 && t.isObject) {
-      destroyGate(t);
-    } else if (t.hp <= 0) {
-      t.dead = true;
-      state.hint = `${t.name}は倒れた…`;
-      updateHUD();
-      await tween(650, p => { t.alpha = 1 - p; });
-      t.gone = true;
+    if (t.hp <= 0 && t.isObject) destroyGate(t);
+    else if (t.hp <= 0) await defeat(t);
+    await runEvents();
+  }
+
+  async function defeat(t) {
+    t.dead = true;
+    state.hint = `${t.name}は倒れた…`;
+    updateHUD();
+    await tween(650, p => { t.alpha = 1 - p; });
+    t.gone = true;
+  }
+
+  // スキルの付加効果（状態異常・能力変化）を与え、頭上に表示する。効いたら true
+  function skillEffect(a, t, sk, pos = t, h = H(t.x, t.y) + altOf(t), t0 = performance.now()) {
+    // ダメージの数字と重ならないよう少し上に出す
+    const show = (text, color) => popups.push({ u: pos, h, text, color, t0, dy: sk.kind === 'attack' ? 12 : 0 });
+    let ok = false;
+    if (sk.status) {
+      const { id, turns, chance } = sk.status;
+      if (immune(t, id)) show('NO', '#a8c8ff');
+      else if (Math.random() * 100 < chance) {
+        t.st = t.st || {};
+        t.st[id] = Math.max(t.st[id] || 0, turns);
+        show(STATUS[id].popup, STATUS[id].color);
+        ok = true;
+      } else show('MISS', '#a8c8ff');
     }
+    if (sk.buff) {
+      t.st = t.st || {};
+      for (const [k, v] of Object.entries(sk.buff)) t.st[k] = { v, n: sk.turns + (t === a ? 1 : 0) };
+      const [k, v] = Object.entries(sk.buff)[0];
+      show(k.toUpperCase() + (v > 0 ? '+' : '-'), v > 0 ? '#ffe070' : '#ff9070');
+      ok = true;
+    }
+    return ok;
+  }
+
+  // 射程 'weapon' 以外のスキル：狙ったマスの効果範囲にいるユニットにまとめて効く
+  async function doSkill(a, id, pos) {
+    const sk = SKILLS[id];
+    if (sk.range === 'weapon') {
+      await doAttack(a, unitAt(pos.x, pos.y), pos, sk);
+      return;
+    }
+    const hits = skillTargets(a, sk, pos);
+    a.mp -= sk.mp;
+    if (sk.kind === 'attack' || sk.kind === 'status') state.lastAttack = state.clock;
+    if (pos.x !== a.x || pos.y !== a.y) a.facing = dirToward(centerOf(a), pos);
+    state.hint = `${a.name}の${sk.name}！`;
+    setCursor(pos.x, pos.y);
+    updateHUD();
+    await tween(260, p => { a.offY = -3 * Math.sin(p * Math.PI); });
+    a.offY = 0;
+    const FX = {
+      fire: null, sleep: ['#ffffff', '#c8b8ff', '#8070e0'], heal: null,
+      buff: ['#ffffff', '#a8d0ff', '#4080f0'], rally: ['#fff0c0', '#ffb060', '#ff6030'],
+    };
+    const now = performance.now(), area = sk.area ? skillArea(sk, pos) : [pos];
+    for (const t of area) {
+      const at = [t.x, t.y, H(t.x, t.y) + altOf(unitAt(t.x, t.y))];
+      effects.push(sk.fx === 'fire' ? { kind: 'fire', at, t0: now, until: now + 520 } : { kind: 'glow', at, t0: now, until: now + 700, cols: FX[sk.fx] });
+    }
+    await wait(sk.fx === 'fire' ? 520 : 600);
+
+    const t0 = performance.now(), fallen = [];
+    for (const t of hits) {
+      const h = H(t.x, t.y) + altOf(t);
+      if (sk.kind === 'attack') {
+        const fc = forecast(a, t, a, t, sk);
+        if (Math.random() * 100 < fc.hit) {
+          const dmg = Math.max(1, Math.round(fc.dmg * (0.9 + Math.random() * 0.2)));
+          t.hp = Math.max(0, t.hp - dmg);
+          if (t.st?.sleep) t.st.sleep = 0;
+          popups.push({ u: t, h, text: String(dmg), color: '#ffffff', t0 });
+          t.blink = true;
+          if (t.hp <= 0) fallen.push(t);
+          else if (sk.status || sk.buff) skillEffect(a, t, sk, t, h, t0 + 400);
+        } else popups.push({ u: t, h, text: 'MISS', color: '#a8c8ff', t0 });
+      } else if (sk.kind === 'heal') {
+        const amt = Math.min(t.maxHp - t.hp, healAmount(a, sk));
+        t.hp += amt;
+        popups.push({ u: t, h, text: String(amt), color: '#90ffa0', t0 });
+      } else if (sk.kind === 'cure') {
+        const st = t.st || {}, bad = st.poison || st.sleep || st.atk?.v < 0 || st.def?.v < 0;
+        delete st.poison; delete st.sleep;
+        for (const k of ['atk', 'def']) if (st[k]?.v < 0) delete st[k];
+        popups.push({ u: t, h, text: bad ? 'CURE' : 'OK', color: '#90ffa0', t0 });
+      } else {
+        skillEffect(a, t, sk, t, h, t0);
+      }
+    }
+    updateHUD();
+    await wait(sk.kind === 'attack' && (sk.status || sk.buff) ? 800 : 550);
+    for (const t of hits) t.blink = false;
+    await Promise.all(fallen.map(defeat));
     await runEvents();
   }
 
@@ -1959,8 +2306,8 @@
   function threatMap(u) {
     const threat = new Map();
     for (const f of units) {
-      if (f.dead || f.team === u.team || !canAttack(f)) continue;
-      const dmg = Math.max(1, f.C.type === 'magic' ? f.atk * 1.3 - u.def * 0.4 : f.atk * 1.25 - u.def * 0.7);
+      if (f.dead || f.team === u.team || !canAttack(f) || f.st?.sleep) continue;
+      const dmg = Math.max(1, baseDmg(f, u, f.C.type === 'magic'));
       // 射程の届きうる範囲（弓の高所ボーナスと体の大きさを含む）のマスだけを調べる
       const hit = new Set(), R = f.C.range[1] + 2 + sizeOf(f);
       for (const s of stopTiles(f, computeReach(f))) {
@@ -1980,6 +2327,7 @@
   // ユニットごとに u.ai で選ぶ。イベントの setAi で戦闘中に切り替えられる。
   //   attack   : 攻撃するか          approach : 攻撃できないときの移動先
   //                                    foes=相手 / goal=防衛マス / leader=味方の将 / area=指定エリア / away=相手から離れる
+  //                                    allies=味方（傷ついた味方を優先）に付き添う
   //   danger   : 危険なマスを嫌う度合い（倒されうるマスは強く避ける）
   //   keepAway : 射手が相手と距離を取る重み   preferWeak : 弱った相手を狙う重み   killBonus : とどめを刺す重み
   //   stay     : その場から動かない   leash : approach=leader のとき将から離れてよい距離
@@ -1995,11 +2343,14 @@
     escort: { name: '護衛', attack: true, approach: 'leader', leash: 2 },
     goto: { name: '移動', attack: false, approach: 'area' },
     flee: { name: '逃走', attack: false, approach: 'away', danger: 1 },
+    support: { name: '支援', attack: true, approach: 'allies', danger: 0.6 },
   };
 
-  // 指定がなければ従来どおり：味方（オート）は慎重、敵将は守備、防衛戦の敵は拠点突破、それ以外は突撃
+  // 指定がなければクラスの既定（回復役は支援）、なければ従来どおり：味方（オート）は慎重、敵将は守備、
+  // 防衛戦の敵は拠点突破、それ以外は突撃
   function aiOf(u) {
     if (u.ai && AI_PROFILES[u.ai]) return u.ai;
+    if (u.C.ai && !u.leader) return u.C.ai;
     if (u.team === 'player') return 'cautious';
     if (u.leader) return 'guard';
     return state.objective.type === 'defend' ? 'objective' : 'aggressive';
@@ -2052,6 +2403,24 @@
         }
       }
     }
+    // スキル：止まれるマス × 使えるスキル × 射程内のマスを評価し、通常攻撃より良ければ使う
+    if (!state.acted) {
+      const pens = s => s.c * 0.3 + danger(s) * (P.danger || 0) + hazardDmg(u, s);
+      for (const id of skillsOf(u)) {
+        const sk = SKILLS[id];
+        if (u.mp < sk.mp || (!P.attack && !supportSkill(sk))) continue;
+        const cands = skillCandidates(sk);
+        for (const s of stops) {
+          for (const pos of cands) {
+            if (!skillInRange(u, sk, s, pos)) continue;
+            const v = skillValue(u, sk, s, pos, P);
+            if (v < 6) continue;
+            const score = v - pens(s) - sk.mp * 0.2;
+            if (!best || score > best.score) best = { s, pos, skill: id, score };
+          }
+        }
+      }
+    }
     if (best) {
       if (best.s.x !== u.x || best.s.y !== u.y) {
         await moveAlong(u, pathTo(reach, best.s));
@@ -2059,7 +2428,10 @@
         if (u.dead || state.phase === 'over') return;
       }
       await wait(200);
-      await doAttack(u, best.t, best.pos);
+      if (best.skill) {
+        // 移動した結果、狙いの効果が変わっていたら見送る（イベントで相手が動いた等）
+        if (skillTargets(u, SKILLS[best.skill], best.pos).length) await doSkill(u, best.skill, best.pos);
+      } else await doAttack(u, best.t, best.pos);
       state.acted = true;
     } else if (!state.moved && P.approach) {
       const dest = chooseMove(u, P, stops, foes, targets, leader, threat);
@@ -2077,6 +2449,52 @@
       u.facing = P.approach === 'away' ? (dir + 2) % 4 : dir;
     }
     await wait(250);
+  }
+
+  // スキルを狙う候補のマス：生きているユニットの占有マスとその効果範囲ぶんの周囲
+  function skillCandidates(sk) {
+    const out = new Map(), r = sk.area || 0;
+    for (const v of units) {
+      if (v.dead) continue;
+      const n = sizeOf(v);
+      for (let y = v.y - r; y < v.y + n + r; y++) {
+        for (let x = v.x - r; x < v.x + n + r; x++) if (tileAt(x, y)) out.set(key(x, y), { x, y });
+      }
+    }
+    return [...out.values()];
+  }
+
+  // from から pos を狙ってスキルを使ったときの価値（通常攻撃の期待ダメージと同じ尺度）。
+  // 範囲攻撃は巻き込む味方を 1.5 倍で差し引く
+  function skillValue(u, sk, from, pos, P) {
+    let v = 0;
+    const kill = P.killBonus ?? 60;
+    for (const t of skillTargets(u, sk, pos)) {
+      const ally = t.team === u.team, st = t.st || {};
+      if (sk.kind === 'attack') {
+        const fc = forecast(u, t, from, t, sk), p = fc.hit / 100;
+        let e = Math.min(fc.dmg, t.hp) * p + (fc.dmg >= t.hp ? kill * p : 0);
+        if (fc.dmg < t.hp && sk.status && !immune(t, sk.status.id) && !st[sk.status.id]) e += p * sk.status.chance / 100 * 14;
+        if (fc.dmg < t.hp && sk.buff && !st.def) e += p * 8;
+        v += ally ? -1.5 * e - (fc.dmg >= t.hp ? kill : 0) : e;
+      } else if (sk.kind === 'status') {
+        if (ally || immune(t, sk.status.id) || st[sk.status.id]) continue;
+        // 強い相手ほど眠らせる価値が高い
+        v += sk.status.chance / 100 * (18 + atkOf(t) * 0.4) * (t.hp / t.maxHp);
+      } else if (!ally) {
+        continue;
+      } else if (sk.kind === 'heal') {
+        const amt = Math.min(t.maxHp - t.hp, healAmount(u, sk));
+        v += amt * (t.hp / t.maxHp < 0.35 ? 1.6 : 1);
+      } else if (sk.kind === 'cure') {
+        v += ((st.poison ? 14 : 0) + (st.sleep ? 22 : 0) + (st.atk?.v < 0 ? 8 : 0) + (st.def?.v < 0 ? 8 : 0));
+      } else if (sk.kind === 'buff') {
+        // 相手の近くにいる（これから戦う）味方ほど価値が高い
+        const near = units.some(f => !f.dead && f.team !== u.team && gap(f, t) <= 5);
+        for (const k of Object.keys(sk.buff)) if (!st[k] && near) v += 7;
+      }
+    }
+    return v;
   }
 
   // 攻撃しないときの移動先。地形上の距離（高低差・通行不可を考慮）で目標に近づく／離れる
@@ -2104,6 +2522,11 @@
     else if (P.approach === 'leader') {
       if (leader && gap(u, leader) <= P.leash) return null;   // 将のそばにいれば動かない
       goals = leader ? [leader] : targets.map(({ pos }) => pos);
+    } else if (P.approach === 'allies') {
+      const allies = units.filter(v => !v.dead && v.team === u.team && v !== u);
+      const hurt = allies.filter(v => v.hp / v.maxHp < 0.7);
+      goals = (hurt.length ? hurt : allies).map(v => ({ x: v.x, y: v.y }));
+      if (!goals.length) goals = targets.map(({ pos }) => pos);
     } else goals = targets.map(({ pos }) => pos);
     if (!goals.length) return null;
     const dist = terrainDist(u, goals);
@@ -2213,7 +2636,7 @@
   function confirm() {
     const { phase, cursor: c, active: u } = state;
     const k = key(c.x, c.y);
-    if (phase === 'menu') {
+    if (phase === 'menu' || phase === 'skillmenu') {
       const m = state.menuItems[state.menuIndex];
       if (m?.enabled) { hideMenu(); m.act(); }
     } else if (phase === 'look') {
@@ -2240,6 +2663,15 @@
         state.acted = true;
         afterAction();
       })();
+    } else if (phase === 'skill') {
+      if (!state.skillTiles.has(k) || !skillTargets(u, SKILLS[state.skill], c).length) return;
+      state.phase = 'busy';
+      state.skillTiles = state.skillArea = null;
+      (async () => {
+        await doSkill(u, state.skill, { x: c.x, y: c.y });
+        state.acted = true;
+        afterAction();
+      })();
     } else if (phase === 'facing') {
       endTurn();
     } else if (phase === 'title') {
@@ -2256,8 +2688,10 @@
       state.phase = 'look';
       state.hint = 'マップ確認中<br>(X で戻る)';
       updateHUD();
-    } else if (p === 'look' || p === 'move' || p === 'target') {
+    } else if (p === 'look' || p === 'move' || p === 'target' || p === 'skillmenu') {
       openMenu();
+    } else if (p === 'skill') {
+      startSkillMenu();
     } else if (p === 'facing' && !(state.moved && state.acted)) {
       openMenu();
     } else if (p === 'over') {
@@ -2271,14 +2705,14 @@
       const n = MAPS.length;
       state.titleIndex = (state.titleIndex + (dx || dy) + n) % n;
       renderTitle();
-    } else if (p === 'menu') {
+    } else if (p === 'menu' || p === 'skillmenu') {
       if (!dy) return;
       const n = state.menuItems.length;
       state.menuIndex = (state.menuIndex + dy + n) % n;
       renderMenu();
     } else if (p === 'facing') {
       state.active.facing = DIRS.findIndex(d => d[0] === dx && d[1] === dy);
-    } else if (p === 'look' || p === 'move' || p === 'target' || p === 'preview') {
+    } else if (p === 'look' || p === 'move' || p === 'target' || p === 'skill' || p === 'preview') {
       setCursor(state.cursor.x + dx, state.cursor.y + dy);
     }
   }
@@ -2339,7 +2773,7 @@
       if (t.x !== u.x || t.y !== u.y) u.facing = dirToward(u, t);
       return same;
     }
-    if (p === 'look' || p === 'move' || p === 'target' || p === 'preview') {
+    if (p === 'look' || p === 'move' || p === 'target' || p === 'skill' || p === 'preview') {
       if (!same) setCursor(t.x, t.y);
       return same;
     }
@@ -2401,7 +2835,8 @@
     $('btnAuto').textContent = `オート ${state.auto ? 'ON' : 'OFF'}`;
     $('btnAuto').classList.toggle('on', state.auto);
     const u = state.active;
-    if (state.auto && u?.team === 'player' && ['menu', 'look', 'move', 'target', 'facing'].includes(state.phase)) {
+    if (state.auto && u?.team === 'player' && ['menu', 'skillmenu', 'look', 'move', 'target', 'skill', 'facing'].includes(state.phase)) {
+      state.skillTiles = state.skillArea = null;
       if (state.phase === 'facing') endTurn(); else runAi(u);
     }
   }
