@@ -2,14 +2,18 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Current State
+## Project
 
-This repository is currently empty — it contains no source code, build configuration, or documentation yet. This CLAUDE.md was generated as the repository's first file.
+`ProgramScheduler/` — a Windows Forms (.NET 8, `net8.0-windows`) app that launches programs at scheduled times, either in parallel or sequentially. Standard library only (no NuGet packages). User-facing text and docs are in Japanese.
 
-## Guidance for Future Sessions
+## Commands
 
-- There are no build, lint, or test commands to document yet. Once a project is scaffolded here (e.g., a `package.json`, `Makefile`, `pyproject.toml`, or similar appears), regenerate or update this file to document the actual commands and architecture.
-- Do not assume a language, framework, or project structure — none has been established.
-- When the first real code lands, replace the contents of this file with:
-  1. The commonly used development commands (build, lint, test, and how to run a single test).
-  2. A high-level description of the architecture that isn't obvious from reading a single file.
+- Build / run (Windows): `cd ProgramScheduler && dotnet build` / `dotnet run`
+- There are no tests.
+- On Linux the distro .NET SDK lacks the WindowsDesktop SDK, so `dotnet build` fails there. To compile-check, build a throwaway net8.0 library project that includes `ProgramScheduler/*.cs` and references the `Microsoft.WindowsDesktop.App.Ref` package's ref assemblies (`PackageDownload` + `Reference`), with global usings for `System.Drawing` and `System.Windows.Forms`.
+
+## Architecture
+
+- `Models.cs`: `ScheduleGroup` (time, weekdays, `ExecutionMode`, `Programs` as `BindingList<ProgramItem>`) and `ProgramItem`. Both implement `INotifyPropertyChanged` so `DataGridView` rows refresh automatically. Runtime-only properties (`Status`, `NextRun`, `Message`) are `[JsonIgnore]`.
+- `SchedulerEngine.cs`: polls every second with a WinForms `Timer` and runs groups with `async/await` on the UI thread — model mutations therefore always happen on the UI thread; keep it that way (no `Task.Run` touching models).
+- `MainForm.cs`: UI built in code (no designer files). Persists to `schedules.json` next to the exe; logs to `logs/`.
